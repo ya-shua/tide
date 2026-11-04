@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## v0.1.2
+
+- 修 	ools/push_api.py：提交消息末尾空白先裁掉，否则 sha 对不上
+- 面板：更新按钮的状态更清楚（正在更新 / 失败会说明原因）
+
 ## v0.1.1
 
 - 修 `tools/release.py`：推送用内存里的带 token 地址，不写进 `.git/config`
