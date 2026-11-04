@@ -107,8 +107,10 @@ def main(argv=None) -> int:
     git("tag", "-a", tag, "-m", msg)
 
     if not args.no_push:
-        print(git("push", "origin", "HEAD:main"))
-        print(git("push", "origin", tag))
+        # token 只在内存里拼进 URL，不落进 .git/config
+        push_url = f"https://x-access-token:{token}@github.com/{args.repo}.git"
+        print(git("push", push_url, "HEAD:main"))
+        print(git("push", push_url, tag))
 
         body = args.notes or f"## {tag}\n\n见提交记录。"
         rel = api(f"https://api.github.com/repos/{args.repo}/releases", token, {
