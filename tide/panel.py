@@ -129,9 +129,10 @@ def main(argv=None) -> None:
     if "--brain" in argv or core.qq.enabled:
         # 她自己的心跳：每分钟看一眼该不该开口（睡着时会被 is_quiet 拦住）
         threading.Thread(target=brain_loop, args=(core,), daemon=True).start()
+    port = int(arg("--port", 7880))
     core.updater.port = port            # 更新完要重启回同一个端口
     core.updater.check_async()          # 后台查一次有没有新版本，不挡启动
-    serve(core, port=int(arg("--port", 7880)))
+    serve(core, port=port)
 
 
 # 页面本体在 web_ui.py（HTML/CSS/JS 都在那边）
