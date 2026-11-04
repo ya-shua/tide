@@ -111,7 +111,15 @@ update:
 python tools/release.py 0.2.0 这一版改了什么     # 改版本号 → 提交 → 打 tag → 推 → 建 Release
 `
 
-## 协议
+
+
+国内网络有时连不上 github.com:443（api.github.com 反而通），用这个推：
+
+`ash
+python tools/push_api.py --repo ya-shua/tide --token-file <token 文件>
+`
+
+它通过 API 把提交原样重建（同样的树、父提交、时间），推完 sha 和本地一致，不会分叉。## 协议
 
 MIT（见 LICENSE）。
 
