@@ -24,6 +24,15 @@ ROOT = Path(__file__).resolve().parent.parent
 VERSION_FILE = ROOT / "tide" / "version.py"
 
 
+SECRET_RE = re.compile(r"(gh[ps]_[A-Za-z0-9_]{10,}|github_pat_[A-Za-z0-9_]{10,}|x-access-token:)[^@\s]+")
+
+
+def redact(text: str) -> str:
+    """任何带 token 的东西都别进日志、别进报错。"""
+    text = SECRET_RE.sub(r"\1***", text)
+    return text.replace("x-access-token:***", "x-access-token:***")
+
+
 def git(*args: str) -> str:
     exe = "git"
     for cand in (exe, r"D:\Git\cmd\git.exe"):
@@ -31,9 +40,11 @@ def git(*args: str) -> str:
             out = subprocess.run([cand, *args], cwd=ROOT, capture_output=True)
             if out.returncode == 0:
                 return out.stdout.decode("utf-8", "replace")
+            err = out.stderr.decode("utf-8", "replace").strip()
+            raise RuntimeError(f"git {' '.join(redact(a) for a in args)} 失败: {redact(err)[:400]}")
         except FileNotFoundError:
             continue
-    raise RuntimeError(f"git 执行失败: {' '.join(args)}")
+    raise RuntimeError(f"找不到 git")
 
 
 def read_version() -> str:

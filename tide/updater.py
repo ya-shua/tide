@@ -24,7 +24,8 @@ USER_AGENT = "tide-updater"
 class Updater:
     def __init__(self, cfg: dict, root: Path, panel_port: int = 7880):
         cfg = cfg or {}
-        self.repo = (cfg.get("repo") or DEFAULT_REPO).strip()
+        repo = cfg.get("repo", None)
+        self.repo = (DEFAULT_REPO if repo is None else str(repo)).strip()
         self.api = (cfg.get("api") or "https://api.github.com").rstrip("/")
         self.root = Path(root)
         self.port = panel_port
@@ -124,6 +125,7 @@ class Updater:
             return dict(self.state)
 
     def _write_bat(self, src: Path) -> Path:
+        self.work.mkdir(parents=True, exist_ok=True)
         bat = self.work / "apply_update.bat"
         skip_dirs = "data .git .test_tmp __pycache__"
         skip_files = "local.yaml local.example.yaml"
