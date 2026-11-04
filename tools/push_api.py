@@ -68,7 +68,8 @@ def push_one(base: str, token: str, sha: str, base_tree: str) -> str:
 
     m = meta_of(sha)
     commit = api(f"{base}/git/commits", token, {
-        "message": git_text("log", "-1", "--format=%B", sha),
+        # GitHub 会去掉消息末尾的空白，这里先按它的规则处理，sha 才对得上
+        "message": git_text("log", "-1", "--format=%B", sha).rstrip(),
         "tree": tree["sha"], "parents": [git_text("rev-parse", f"{sha}^")],
         "author": m["author"], "committer": m["committer"],
     }, method="POST")
