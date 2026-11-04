@@ -1,0 +1,9 @@
+#!/bin/sh
+# 把提交消息末尾的空白去掉：GitHub 的 commits API 就是这么存的，
+# 不裁的话 push_api 重建出来的 sha 和本地对不上。
+python - "$1" <<'PY'
+import io, sys
+p = sys.argv[1]
+s = io.open(p, encoding="utf-8").read().rstrip()
+io.open(p, "w", encoding="utf-8", newline="").write(s)
+PY

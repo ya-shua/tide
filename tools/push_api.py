@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import os
 import json
 import subprocess
 import urllib.request
@@ -44,6 +45,20 @@ def meta_of(sha: str) -> dict:
             "committer": {"name": parts[3], "email": parts[4], "date": parts[5]}}
 
 
+def commit_tree(tree: str, parent: str, message: str, meta: dict) -> str:
+    env = dict(os.environ,
+               GIT_AUTHOR_NAME=meta["author"]["name"], GIT_AUTHOR_EMAIL=meta["author"]["email"],
+               GIT_AUTHOR_DATE=meta["author"]["date"],
+               GIT_COMMITTER_NAME=meta["committer"]["name"],
+               GIT_COMMITTER_EMAIL=meta["committer"]["email"],
+               GIT_COMMITTER_DATE=meta["committer"]["date"])
+    r = subprocess.run(["git", "commit-tree", tree, "-p", parent, "-F", "-"],
+                       cwd=ROOT, input=message.encode(), capture_output=True, env=env)
+    if r.returncode != 0:
+        raise RuntimeError(r.stderr.decode("utf-8", "replace"))
+    return r.stdout.decode().strip()
+
+
 def push_one(base: str, token: str, sha: str, base_tree: str) -> str:
     """把一个提交原样搬到远端，返回远端新提交 sha（应当等于本地 sha）。"""
     parent = git_text("rev-parse", f"{sha}^")
@@ -74,7 +89,13 @@ def push_one(base: str, token: str, sha: str, base_tree: str) -> str:
         "author": m["author"], "committer": m["committer"],
     }, method="POST")
     if commit["sha"] != sha:
-        raise RuntimeError(f"提交 sha 对不上：远端 {commit['sha'][:12]}，本地 {sha[:12]}")
+        # 常见原因：本地消息末尾带换行，GitHub 存的是裁过的版本。
+        # 在本地按同样的字段重建一个，让这个 sha 在本地也存在，两边就一致了。
+        alt = commit_tree(tree["sha"], parent, git_text("log", "-1", "--format=%B", sha).rstrip(), m)
+        if alt != commit["sha"]:
+            raise RuntimeError(f"提交 sha 对不上：远端 {commit['sha'][:12]}，本地 {sha[:12]}")
+        print(f"  消息末尾空白已按 GitHub 规则裁掉：{sha[:7]} -> {alt[:7]}")
+        return alt
     return commit["sha"]
 
 
@@ -99,13 +120,18 @@ def main(argv=None) -> int:
         return 0
 
     base_tree = remote["commit"]["tree"]["sha"]
+    final = remote_sha
     for sha in todo:
         print(f"推 {sha[:12]} {git_text('log', '-1', '--format=%s', sha)}")
         base_tree = push_one(base, token, sha, base_tree)
+        final = base_tree
 
     api(f"{base}/git/refs/heads/{args.branch}", token,
-        {"sha": head, "force": False}, method="PATCH")
-    print(f"已更新 {args.branch} -> {head[:12]}")
+        {"sha": final, "force": False}, method="PATCH")
+    if final != head:
+        subprocess.run(["git", "update-ref", f"refs/heads/{args.branch}", final], cwd=ROOT, check=True)
+        print(f"本地 {args.branch} 也对齐到 {final[:12]}")
+    print(f"已更新 {args.branch} -> {final[:12]}")
 
     for tag in args.tag:
         msg = git_text("tag", "-l", "--format=%(contents)", tag) or tag
