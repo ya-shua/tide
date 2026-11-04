@@ -115,32 +115,38 @@ def main(argv=None) -> int:
     head = git_text("rev-parse", "HEAD")
 
     todo = git_text("rev-list", "--reverse", f"{remote_sha}..{head}").splitlines()
-    if not todo:
+    head = git_text("rev-parse", "HEAD")
+    final = head
+    if todo:
+        base_tree = remote["commit"]["tree"]["sha"]
+        for sha in todo:
+            print(f"推 {sha[:12]} {git_text('log', '-1', '--format=%s', sha)}")
+            base_tree = push_one(base, token, sha, base_tree)
+            final = base_tree
+        api(f"{base}/git/refs/heads/{args.branch}", token,
+            {"sha": final, "force": False}, method="PATCH")
+        if final != head:
+            subprocess.run(["git", "update-ref", f"refs/heads/{args.branch}", final],
+                           cwd=ROOT, check=True)
+            print(f"本地 {args.branch} 也对齐到 {final[:12]}")
+        print(f"已更新 {args.branch} -> {final[:12]}")
+    else:
         print("远端已经是最新的。")
-        return 0
-
-    base_tree = remote["commit"]["tree"]["sha"]
-    final = remote_sha
-    for sha in todo:
-        print(f"推 {sha[:12]} {git_text('log', '-1', '--format=%s', sha)}")
-        base_tree = push_one(base, token, sha, base_tree)
-        final = base_tree
-
-    api(f"{base}/git/refs/heads/{args.branch}", token,
-        {"sha": final, "force": False}, method="PATCH")
-    if final != head:
-        subprocess.run(["git", "update-ref", f"refs/heads/{args.branch}", final], cwd=ROOT, check=True)
-        print(f"本地 {args.branch} 也对齐到 {final[:12]}")
-    print(f"已更新 {args.branch} -> {final[:12]}")
 
     for tag in args.tag:
-        msg = git_text("tag", "-l", "--format=%(contents)", tag) or tag
-        obj = api(f"{base}/git/tags", token,
-                  {"tag": tag, "message": msg or tag, "object": head, "type": "commit"},
-                  method="POST")
-        api(f"{base}/git/refs", token, {"ref": f"refs/tags/{tag}", "sha": obj["sha"]},
-            method="POST")
-        print(f"已建远端 tag {tag}")
+        try:
+            obj = api(f"{base}/git/tags", token,
+                      {"tag": tag,
+                       "message": git_text("log", "-1", "--format=%s", final) or tag,
+                       "object": final, "type": "commit"}, method="POST")
+            api(f"{base}/git/refs", token,
+                {"ref": f"refs/tags/{tag}", "sha": obj["sha"]}, method="POST")
+            print(f"已建远端 tag {tag}")
+        except Exception as e:
+            if "422" in str(e):
+                print(f"tag {tag} 已经存在，跳过")
+            else:
+                raise
     return 0
 
 
