@@ -41,8 +41,10 @@ HTML = r"""<!doctype html>
     border-radius:7px;padding:3px 9px;font:inherit;font-size:12px;cursor:pointer}
   .chip:hover{color:var(--fg);border-color:#313943}
   .top .ver{color:var(--faint);font:11px/1 ui-monospace,Consolas,monospace;opacity:.75}
-  .chip.upd{border-color:#5d3a46;color:#e3b6c4}
-  .chip.upd:hover{border-color:#7a4b5a;color:#f0c9d5}
+  .chip.upd{background:var(--accent);border-color:var(--accent);color:#20161a;
+    font-weight:600;letter-spacing:.01em;padding:5px 12px;
+    box-shadow:0 0 0 3px rgba(207,157,176,.10)}
+  .chip.upd:hover{background:#ddb2c2;border-color:#ddb2c2;color:#20161a}
   .chip.upd:disabled{opacity:.6;cursor:default}
 
   /* ── ① 此刻 ── */
@@ -123,7 +125,7 @@ HTML = r"""<!doctype html>
   .axis .nowp{color:var(--fg);background:var(--card2);border:1px solid var(--line);
     border-radius:99px;padding:0 9px;font-size:11px}
 
-  /* ── 设置抽屉 ── */
+/* ── 设置抽屉 ── */
   .scrim{position:fixed;inset:0;background:rgba(6,8,11,.66);opacity:0;pointer-events:none;
     transition:opacity .2s;z-index:40}
   .scrim.on{opacity:1;pointer-events:auto}
@@ -168,6 +170,23 @@ HTML = r"""<!doctype html>
   .controls button.hot{color:#d3a0a0;border-color:#3a2c30}
   .controls button.soft{color:#a3c3ae;border-color:#2b3a31}
 
+  /* ── 分页 ── */
+  .nav{display:flex;gap:2px;margin-bottom:14px;border-bottom:1px solid var(--line-soft)}
+  .nt{background:none;border:0;border-bottom:2px solid transparent;color:var(--faint);
+    font:inherit;font-size:12.5px;padding:9px 13px;margin-bottom:-1px;cursor:pointer;
+    letter-spacing:.02em}
+  .nt:hover{color:var(--dim)}
+  .nt.on{color:var(--fg);border-bottom-color:var(--accent)}
+  .page{display:none}
+  .page.on{display:block}
+  .dbg{padding:15px 18px}
+  .dbg .hd{display:flex;align-items:baseline;gap:10px;margin-bottom:9px}
+  .dbg h2{font-size:11px;letter-spacing:.14em;color:var(--faint);font-weight:500}
+  .dbg .cnt{font-size:11.5px;color:var(--faint)}
+  .dbg .note{font-size:12px;color:var(--faint);margin:0}
+  .dbg + .dbg{margin-top:14px}
+  .dbg pre{max-height:52vh;overflow:auto}
+
   @media(max-width:900px){
     body{padding:18px 13px 30px}
     .grid{grid-template-columns:1fr}
@@ -180,7 +199,7 @@ HTML = r"""<!doctype html>
 <div class="wrap">
 
   <div class="top">
-    <h1>Tide</h1><span class="sub">此刻</span><span class="ver" id="ver"></span>
+    <h1>Tide</h1><span class="sub" id="tabname">此刻</span><span class="ver" id="ver"></span>
     <div class="grow"></div>
     <span class="clock" id="clock">—</span>
     <button class="chip upd" id="upd" style="display:none"></button>
@@ -188,61 +207,83 @@ HTML = r"""<!doctype html>
     <button class="chip" id="gear">设置</button>
   </div>
 
-  <div class="grid">
-  <div class="col-main">
-  <section class="card now">
-    <div class="lb"><span>此刻</span><span class="idle" id="idle"></span></div>
-    <div class="doing" id="doing">—</div>
-    <div class="why" id="why">—</div>
-    <div class="say">
-      <span class="sl">心里在想</span>
-      <span class="txt" id="say">—</span>
+  <nav class="nav" id="nav">
+    <button class="nt on" data-tab="home">主页</button>
+    <button class="nt" data-tab="memory">记忆</button>
+    <button class="nt" data-tab="debug">调试</button>
+  </nav>
+
+  <section class="page on" id="page-home">
+    <div class="grid">
+    <div class="col-main">
+    <section class="card now">
+      <div class="lb"><span>此刻</span><span class="idle" id="idle"></span></div>
+      <div class="doing" id="doing">—</div>
+      <div class="why" id="why">—</div>
+      <div class="say">
+        <span class="sl">心里在想</span>
+        <span class="txt" id="say">—</span>
+      </div>
+    </section>
+
+    <section class="card needs">
+      <div class="hd"><h2>缺什么</h2><span class="hint" id="need-hint"></span></div>
+      <div id="needs"></div>
+    </section>
+    </div>
+
+    <aside class="col-side">
+      <section class="card m" id="rel-card">
+        <div class="lb">关系</div>
+        <div class="mb">
+          <div class="big" id="rel-big">—</div>
+          <div class="sub" id="rel-sub">—</div>
+        </div>
+        <div class="advice" id="rel-advice" style="display:none"></div>
+      </section>
+
+      <section class="card m" id="emo-card">
+        <div class="lb">情绪</div>
+        <div class="mb">
+          <div class="big" id="emo-big">—</div>
+          <div class="sub" id="emo-sub">—</div>
+        </div>
+      </section>
+
+      <section class="card m act" id="act-card">
+        <div class="lb">会不会来找你</div>
+        <div class="mb">
+          <div class="big" id="act-big">—</div>
+          <div class="sub" id="act-sub">—</div>
+        </div>
+        <div class="meter"><i id="act-bar" style="width:0%"></i></div>
+      </section>
+    </aside>
     </div>
   </section>
 
-  <section class="card needs">
-    <div class="hd"><h2>缺什么</h2><span class="hint" id="need-hint"></span></div>
-    <div id="needs"></div>
+  <section class="page" id="page-memory">
+    <section class="card tl">
+      <div class="hd"><h2>记得</h2><span class="cnt">越久越模糊</span></div>
+      <ul id="mem"></ul>
+      <div class="hd" style="margin-top:14px"><h2>这段时间</h2>
+        <span class="cnt" id="cnt"></span></div>
+      <ul id="past"></ul>
+      <div class="axis"><span>过去</span><span class="ln"></span><span class="nowp">现在</span><span class="ln"></span><span>接下来</span></div>
+      <ul id="future"></ul>
+    </section>
   </section>
-  </div>
 
-  <aside class="col-side">
-    <section class="card m" id="rel-card">
-      <div class="lb">关系</div>
-      <div class="mb">
-        <div class="big" id="rel-big">—</div>
-        <div class="sub" id="rel-sub">—</div>
-      </div>
-      <div class="advice" id="rel-advice" style="display:none"></div>
+  <section class="page" id="page-debug">
+    <section class="card dbg">
+      <div class="hd"><h2>给 LLM 的软约束</h2><span class="cnt">机器看的，不是你读的</span></div>
+      <pre id="prompt">—</pre>
     </section>
-
-    <section class="card m" id="emo-card">
-      <div class="lb">情绪</div>
-      <div class="mb">
-        <div class="big" id="emo-big">—</div>
-        <div class="sub" id="emo-sub">—</div>
-      </div>
+    <section class="card dbg">
+      <div class="hd"><h2>测试工具</h2><span class="cnt">正式版不会出现</span></div>
+      <p class="note">等价于「有人说了这句话」，只在本地改状态。真跑起来以后输入来自 QQ。</p>
+      <div class="controls" id="controls"></div>
     </section>
-
-    <section class="card m act" id="act-card">
-      <div class="lb">会不会来找你</div>
-      <div class="mb">
-        <div class="big" id="act-big">—</div>
-        <div class="sub" id="act-sub">—</div>
-      </div>
-      <div class="meter"><i id="act-bar" style="width:0%"></i></div>
-    </section>
-  </aside>
-  </div>
-
-  <section class="card tl">
-    <div class="hd"><h2>记得</h2><span class="cnt">越久越模糊</span></div>
-    <ul id="mem"></ul>
-    <div class="hd" style="margin-top:14px"><h2>这段时间</h2>
-      <span class="cnt" id="cnt"></span></div>
-    <ul id="past"></ul>
-    <div class="axis"><span>过去</span><span class="ln"></span><span class="nowp">现在</span><span class="ln"></span><span>接下来</span></div>
-    <ul id="future"></ul>
   </section>
 
   <div class="scrim" id="scrim"></div>
@@ -257,19 +298,6 @@ HTML = r"""<!doctype html>
       <button class="btn primary" id="s-save">保存</button>
     </div>
   </aside>
-
-  <details>
-    <summary>给 LLM 的软约束 · 机器看的，不是你读的</summary>
-    <div class="body"><pre id="prompt">—</pre></div>
-  </details>
-
-  <details>
-    <summary>测试工具 · 正式版不会出现</summary>
-    <div class="body">
-      <p style="font-size:12px;color:var(--faint)">等价于"有人说了这句话"，只在本地改状态。真跑起来以后输入来自 QQ。</p>
-      <div class="controls" id="controls"></div>
-    </div>
-  </details>
 
 </div>
 
@@ -591,6 +619,22 @@ function render(){
   el('prompt').textContent=plan.prompt;
 }
 
+  /* ── 分页：主页 / 记忆 / 调试 ── */
+const TABS={home:'此刻',memory:'记忆',debug:'调试'};
+function setTab(name){
+  if(!TABS[name]) name='home';
+  document.querySelectorAll('.nt').forEach(b=>b.classList.toggle('on',b.dataset.tab===name));
+  document.querySelectorAll('.page').forEach(p=>p.classList.toggle('on',p.id==='page-'+name));
+  el('tabname').textContent=TABS[name];
+  if(('#'+name)!==location.hash) history.replaceState(null,'','#'+name);
+}
+el('nav').onclick=e=>{
+  const b=e.target.closest('.nt');
+  if(b) setTab(b.dataset.tab);
+};
+const qs=new URLSearchParams(location.search);
+setTab(qs.get('tab')||(location.hash||'').replace('#',''));
+
 /* ── 设置抽屉 ── */
 const scrim=el('scrim'), drawer=el('drawer'), sbody=el('s-body'), smsg=el('s-msg');
 let SCFG=null;
@@ -647,7 +691,7 @@ if(location.hash==='#settings') openSettings();
 
 /* 量一下版式：?probe=1 时把各块的位置尺寸塞进标题，方便 headless 检查 */
 function probe(){
-  const rows=[...document.querySelectorAll('.now,.m,.needs,.tl')].map(e=>{
+  const rows=[...document.querySelectorAll('.page.on .now,.page.on .m,.page.on .needs,.page.on .tl')].map(e=>{
     const r=e.getBoundingClientRect();
     return {c:(e.className||'').split(' ')[0],
             y:Math.round(r.top),h:Math.round(r.height),w:Math.round(r.width)};
