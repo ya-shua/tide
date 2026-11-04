@@ -1,0 +1,7 @@
+#!/bin/sh
+# 提交前门禁：有任何隐私字符就拒绝这次 commit
+python tools/privacy_gate.py --staged || {
+  echo ""
+  echo "提交被门禁拦住了。用 'git commit --no-verify' 能绕过，但别那么干。"
+  exit 1
+}

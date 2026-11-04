@@ -1,0 +1,21 @@
+name: privacy-gate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 检查隐私字符
+        run: python tools/privacy_gate.py --head
+      - name: 跑测试
+        run: python -m unittest discover -s tests

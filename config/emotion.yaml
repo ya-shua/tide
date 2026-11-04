@@ -1,0 +1,29 @@
+# Tide· 情绪配置
+# 文档 §4.1：双轨制——离散标签做主（给 TTS 和动作），PAD 连续值做内部平滑。
+
+baseline:
+  pleasure: 0.15     # 略偏正向
+  arousal: 0.35      # 偏安静
+  dominance: 0.5
+
+# 半衰期（分钟）。没列的走 90 分钟。
+half_life_min:
+  angry: 25          # 来得快去得也快
+  annoyed: 40        # 闷气，比愤怒绵长
+  joyful: 60
+  playful: 70
+  shy: 45
+  excited: 90
+  worried: 120
+  sad: 240           # 低落会挂很久
+  disappointed: 360  # 失望最难消
+  affectionate: 720  # 亲近感接近基线
+  nostalgic: 300
+  bored: 90
+  tired: 120
+
+# 单次事件情绪增量上限，防一句重话把状态打穿
+max_delta_per_event: 0.4
+
+# 低于这个强度就当作"平静"
+calm_threshold: 0.12

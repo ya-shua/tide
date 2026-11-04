@@ -1,0 +1,92 @@
+# Tide· 刺激 → 增量 规则表（文档 §5）
+#
+# 每条输入先过一遍评估，再决定改哪个变量。命中即执行，可叠加。
+#
+# need_target: true   只有"针对她"的话才算（"你真笨"），"这软件真笨"不算
+# requires_short: true 只对极短消息生效（"嗯""哦" 才是敷衍）
+# mood                命中时顺便记下"对方是什么情绪"
+#
+# 以后接 LLM 分类，就是把这套规则换成一次轻量分类调用，产出结构不变。
+
+rules:
+  - id: praise
+    keywords: ["厉害", "好看", "可爱", "聪明", "真棒", "喜欢", "爱你", "佩服", "牛啊", "好厉害"]
+    emotion:
+      joyful: 0.35
+      affectionate: 0.12
+    bond:
+      affinity: 2
+
+  - id: hostile
+    keywords: ["笨蛋", "真笨", "好笨", "蠢", "傻", "烦人", "讨厌", "闭嘴", "滚", "没用", "废物"]
+    strong: ["烦"]
+    needs_you: true         # 所以必须带"你"
+    need_target: true
+    emotion:
+      angry: 0.30
+      sad: 0.15
+    bond:
+      grievance: 20
+    mood: angry
+
+  - id: dismissive
+    keywords: ["嗯", "哦", "好", "行", "好吧", "随便", "不知道"]
+    requires_short: true
+    emotion:
+      annoyed: 0.20
+    bond:
+      grievance: 8
+
+  - id: apology
+    keywords: ["对不起", "抱歉", "我错了", "原谅我", "是我不好", "别怪我"]
+    emotion:
+      sad: -0.20
+    bond:
+      grievance: -30
+      affinity: 3
+
+  - id: boring
+    keywords: ["好无聊", "无聊", "没事干", "没意思", "闲得慌"]
+    emotion:
+      bored: 0.20
+    needs:
+      boredom: -10
+
+  - id: drinking
+    keywords: ["喝水", "喝点水", "喝口水", "倒水", "渴不渴", "多喝水"]
+    needs:
+      thirst: -30
+    emotion:
+      affectionate: 0.10
+
+  - id: feeding
+    keywords: ["吃饭", "吃点", "喂你", "投喂", "零食", "宵夜", "喝点", "奶茶", "给你买", "给你带"]
+    skip_if_question: true   # "晚上想吃点什么？"是在问她，不是喂了她
+    emotion:
+      joyful: 0.20
+    bond:
+      affinity: 1
+    needs:
+      hunger: -35
+
+  - id: care
+    keywords: ["想你", "在吗", "抱抱", "辛苦了", "早点睡", "多喝水", "注意身体", "累不累", "别生气", "乖"]
+    emotion:
+      affectionate: 0.25
+    bond:
+      affinity: 2
+      grievance: -8      # 哄两句也消气，但不如正式道歉（-30）
+
+  - id: tease
+    keywords: ["哈哈哈", "笑死", "逗你", "开玩笑", "嘻嘻"]
+    emotion:
+      playful: 0.20
+
+# ---- 对方情绪词表（P0/P1 的规则版 R2；P2 换成 LLM 分类即可） ----
+moods:
+  sad: ["难过", "伤心", "想哭", "郁闷", "不开心", "emo", "低落"]
+  angry: ["生气", "气死", "火大", "烦死", "抓狂"]
+  anxious: ["紧张", "焦虑", "担心", "害怕", "慌"]
+  tired: ["累", "困", "加班", "熬夜", "顶不住"]
+  happy: ["开心", "高兴", "太好了", "哈哈"]
+  excited: ["激动", "兴奋", "冲冲冲"]

@@ -1,0 +1,7 @@
+#!/bin/sh
+# 推送前门禁：整棵树再扫一遍（防 --no-verify 漏进来的）
+python tools/privacy_gate.py --head || {
+  echo ""
+  echo "推送被门禁拦住了：先把上面列的东西挪出去，再 push。"
+  exit 1
+}

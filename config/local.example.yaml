@@ -1,0 +1,8 @@
+# 复制成 local.yaml 再填：这个文件是模板，可以进仓库
+qq:
+  enabled: true
+  token: "<SnowLuma 的 access token>"
+  target: <你的 QQ 号>
+
+update:
+  repo: "<owner>/tide"

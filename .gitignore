@@ -1,0 +1,8 @@
+data/
+.test_tmp/
+.edge-tmp*/
+__pycache__/
+*.pyc
+config/local.yaml
+.edge-*/
+_update/
