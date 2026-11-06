@@ -206,6 +206,26 @@ HTML = r"""<!doctype html>
   .controls button.hot{color:#d3a0a0;border-color:#3a2c30}
   .controls button.soft{color:#a3c3ae;border-color:#2b3a31}
 
+  /* ── 左下角更新提示 ── */
+  .updtoast{position:fixed;left:20px;bottom:20px;z-index:45;display:flex;align-items:center;
+    gap:11px;padding:11px 12px 11px 13px;border-radius:11px;max-width:min(430px,92vw);
+    background:#221b23;border:1px solid #6d4c59;border-left:3px solid var(--accent);
+    box-shadow:0 12px 34px rgba(0,0,0,.5);animation:utin .26s ease-out}
+  .updtoast[hidden]{display:none}
+  @keyframes utin{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+  .updtoast .dot{width:7px;height:7px;border-radius:99px;background:var(--accent);flex:none;
+    box-shadow:0 0 0 3px rgba(207,157,176,.16)}
+  .updtoast .tx{flex:1;min-width:0;line-height:1.45}
+  .updtoast .tx b{display:block;font-size:12.5px;color:var(--fg);font-weight:600}
+  .updtoast .tx span{font-size:11.5px;color:var(--dim)}
+  .updtoast #ut-go{padding:5px 12px;font-size:12px;white-space:nowrap;flex:none}
+  .updtoast .ut-x{background:none;border:0;color:var(--faint);font-size:15px;line-height:1;
+    cursor:pointer;padding:2px 3px;flex:none}
+  .updtoast .ut-x:hover{color:var(--fg)}
+  .updtoast.busy{border-left-color:var(--steel)}
+  .updtoast.busy .dot{background:var(--steel);box-shadow:0 0 0 3px rgba(157,178,198,.16)}
+  @media (prefers-reduced-motion:reduce){.updtoast{animation:none}}
+
   /* ── 分页 ── */
   .nav{display:flex;gap:2px;margin-bottom:14px;border-bottom:1px solid var(--line-soft)}
   .nt{background:none;border:0;border-bottom:2px solid transparent;color:var(--faint);
@@ -333,6 +353,16 @@ HTML = r"""<!doctype html>
     </section>
   </section>
 
+  <div class="updtoast" id="updtoast" hidden>
+    <span class="dot"></span>
+    <div class="tx">
+      <b id="ut-title">有新版本</b>
+      <span id="ut-sub"></span>
+    </div>
+    <button class="btn primary" id="ut-go">一键更新</button>
+    <button class="ut-x" id="ut-x" title="这次先不看">×</button>
+  </div>
+
   <div class="scrim" id="scrim"></div>
   <aside class="drawer" id="drawer">
     <div class="dh">
@@ -374,21 +404,7 @@ async function post(path,body){
   data=await r.json(); render();
 }
 el('refresh').onclick=load;
-el('upd').onclick=async()=>{
-  const b=el('upd');
-  const ok=confirm('现在更新到最新版本？面板会自己重启一次。');
-  if(!ok) return;
-  b.disabled=true; b.textContent='正在更新…';
-  try{
-    const r=await fetch('/api/update',{method:'POST'});
-    const j=await r.json();
-    if(!r.ok||(j&&j.error)){ b.textContent='更新失败'; b.disabled=false;
-      alert((j&&j.error)||'更新失败'); return; }
-    b.textContent='更新中，面板马上重启';
-  }catch(e){
-    b.disabled=false; b.textContent='更新失败';
-  }
-};
+el('upd').onclick=()=>doUpdate();
 
 const ACTIONS=[
   {t:'夸一句',p:'/api/observe',b:{text:'你今天好可爱呀'}},
@@ -688,6 +704,7 @@ function syncUpdateCard(s){
   const b=el('upd2');
   if(up.has_update&&!up.applying){ b.style.display=''; b.textContent='更新到最新 '+up.latest; }
   else b.style.display='none';
+  syncToast(up, s.version);
 }
 async function checkUpdate(){
   const cnt=el('ver-cnt'); cnt.textContent='正在查…'; cnt.style.color='';
@@ -698,16 +715,47 @@ async function checkUpdate(){
     if(!j.has_update&&!j.error) cnt.textContent='已是最新';
   }catch(e){ cnt.textContent='检查失败（没网？）'; }
 }
+function updButtons(){
+  return [el('ut-go'), el('upd2'), el('upd')].filter(Boolean);
+}
 async function doUpdate(){
-  const b=el('upd2');
   if(!confirm('现在更新到最新版本？面板会自己重启一次。')) return;
-  b.disabled=true; b.textContent='正在更新…';
+  updButtons().forEach(b=>{ b.disabled=true; });
+  syncToast({applying:true});
   try{
     const r=await fetch('/api/update',{method:'POST'});
     const j=await r.json();
-    if(j.error){ alert(j.error); b.disabled=false; }
-    else b.textContent='更新中，面板马上重启';
-  }catch(e){ b.disabled=false; b.textContent='更新失败'; }
+    if(!r.ok||(j&&j.error)){
+      updButtons().forEach(b=>{ b.disabled=false; });
+      alert((j&&j.error)||'更新失败');
+      return;
+    }
+    const t=el('ut-title'); if(t) t.textContent='正在更新…';
+  }catch(e){
+    updButtons().forEach(b=>{ b.disabled=false; });
+    alert('更新失败：网络或本地文件占用');
+  }
+}
+
+/* ── 左下角提示：有新版本就浮出来，点一下就更新 ── */
+function syncToast(up, cur){
+  const box=el('updtoast'); if(!box) return;
+  const latest=up&&up.latest;
+  if(up&&up.applying){
+    box.hidden=false; box.classList.add('busy');
+    el('ut-title').textContent='正在更新…';
+    el('ut-sub').textContent='面板马上会自己重启一次';
+    el('ut-go').hidden=true; el('ut-x').hidden=true;
+    return;
+  }
+  box.classList.remove('busy');
+  el('ut-go').hidden=false; el('ut-x').hidden=false;
+  if(!up||!up.has_update||!latest){ box.hidden=true; return; }
+  if(sessionStorage.getItem('tide-skip-'+latest)==='1'){ box.hidden=true; return; }
+  box.hidden=false;
+  el('ut-title').textContent='新版本 '+latest;
+  el('ut-sub').textContent='现在是 v'+(cur||'?')+'，点一下就更到最新';
+  el('ut-go').textContent='一键更新';
 }
 
 /* ── 分页：主页 / 记忆 / 调试 ── */
@@ -774,6 +822,12 @@ async function saveSettings(){
 }
 el('gear').onclick=openSettings;
 el('chk').onclick=checkUpdate;
+el('ut-go').onclick=()=>doUpdate();
+el('ut-x').onclick=()=>{
+  const up=(data&&data.snapshot&&data.snapshot.update)||{};
+  if(up.latest) sessionStorage.setItem('tide-skip-'+up.latest,'1');
+  el('updtoast').hidden=true;
+};
 el('upd2').onclick=doUpdate;
 el('s-close').onclick=closeSettings;
 el('s-save').onclick=saveSettings;

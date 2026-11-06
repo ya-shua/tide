@@ -1,6 +1,6 @@
 """版本号：唯一真源。发版脚本从这里读，更新检查也拿它比。"""
 
-__version__ = "0.1.7"
+__version__ = "0.1.8"
 
 # 更新检查默认指向的仓库（config/rules.yaml 的 update.repo 会覆盖它）
 DEFAULT_REPO = "ya-shua/tide"
