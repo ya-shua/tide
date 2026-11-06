@@ -2,9 +2,9 @@
 import unittest
 from pathlib import Path
 
-import yaml
 
 from tide.appraisal import Appraiser
+from tide.core import _load_yaml as load_yaml
 
 CONFIG = Path(__file__).resolve().parent.parent / "config"
 
@@ -12,7 +12,7 @@ CONFIG = Path(__file__).resolve().parent.parent / "config"
 class TestFoodTalk(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.ap = Appraiser(yaml.safe_load((CONFIG / "stimuli.yaml").read_text(encoding="utf-8")))
+        cls.ap = Appraiser(load_yaml(CONFIG / "stimuli.yaml"))
 
     def test_asking_what_she_wants_is_not_feeding(self):
         r = self.ap.evaluate("晚上想吃点什么？")

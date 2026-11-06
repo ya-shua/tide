@@ -5,7 +5,7 @@
 - `- ` 标量列表
 - `- key: value` 之后的映射列表（含嵌套映射）
 - 标量：字符串（可带引号）、整数、浮点、true/false/null
-- 行内列表：[a, b, c]
+- 行内列表 `[a, b, c]`，**可以跨行**（配置里就有长的）
 - `#` 注释（引号内的 # 不算）
 
 够用即可，不是通用 YAML。若环境里有 PyYAML，core 会优先用它。
@@ -15,16 +15,35 @@ from __future__ import annotations
 
 def loads(text: str) -> dict:
     rows = []
+    pending = None          # 还没闭合的行内列表，攒到闭合为止
     for raw in text.splitlines():
         line = _strip_comment(raw)
+        if pending is not None:
+            indent, body = pending[0], pending[1] + " " + line.strip()
+            if _balanced(body):
+                rows.append([indent, body])
+                pending = None
+            else:
+                pending = [indent, body]
+            continue
         if not line.strip():
             continue
         indent = len(line) - len(line.lstrip(" "))
-        rows.append([indent, line.strip()])
+        body = line.strip()
+        if body.count("[") > body.count("]"):
+            pending = [indent, body]
+            continue
+        rows.append([indent, body])
+    if pending is not None:                 # 括号没配对，就当普通行收下
+        rows.append([pending[0], pending[1]])
     if not rows:
         return {}
     value, _ = _block(rows, 0, rows[0][0])
     return value
+
+
+def _balanced(s: str) -> bool:
+    return s.count("[") <= s.count("]")
 
 
 def _strip_comment(line: str) -> str:
@@ -86,6 +105,29 @@ def _list(rows, i, indent):
     return out, i
 
 
+def _split_flow(inner: str) -> list:
+    """按逗号切，引号里的逗号不算。"""
+    parts, buf, quote = [], [], None
+    for ch in inner:
+        if quote:
+            buf.append(ch)
+            if ch == quote:
+                quote = None
+            continue
+        if ch in "\"'":
+            quote = ch
+            buf.append(ch)
+            continue
+        if ch == ",":
+            parts.append("".join(buf))
+            buf = []
+            continue
+        buf.append(ch)
+    if "".join(buf).strip():
+        parts.append("".join(buf))
+    return parts
+
+
 def _scalar(s: str):
     s = s.strip()
     if not s:
@@ -94,7 +136,7 @@ def _scalar(s: str):
         return s[1:-1]
     if s.startswith("[") and s.endswith("]"):
         inner = s[1:-1].strip()
-        return [] if not inner else [_scalar(x) for x in inner.split(",")]
+        return [] if not inner else [_scalar(x) for x in _split_flow(inner)]
     low = s.lower()
     if low in ("true", "yes", "on"):
         return True

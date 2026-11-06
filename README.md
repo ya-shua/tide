@@ -1,7 +1,7 @@
 # Tide
 
 [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![版本](https://img.shields.io/badge/version-0.1.0-cf9db0.svg)](https://github.com/ya-shua/tide/releases)
+[![版本](https://img.shields.io/badge/version-1.0.0-cf9db0.svg)](https://github.com/ya-shua/tide/releases)
 [![privacy-gate](https://github.com/ya-shua/tide/actions/workflows/privacy.yml/badge.svg)](https://github.com/ya-shua/tide/actions/workflows/privacy.yml)
 
 

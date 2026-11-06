@@ -8,9 +8,8 @@ CONFIG = Path(__file__).resolve().parent.parent / "config"
 
 
 def load():
-    import yaml
-    cfg = yaml.safe_load((CONFIG / "stimuli.yaml").read_text(encoding="utf-8"))
-    return Appraiser(cfg)
+    from tide.core import _load_yaml
+    return Appraiser(_load_yaml(CONFIG / "stimuli.yaml"))
 
 
 class TestWhoIsItAimedAt(unittest.TestCase):
