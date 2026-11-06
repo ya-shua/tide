@@ -8,3 +8,4 @@ config/local.yaml
 _update/
 plugins/
 logs/
+config/privacy.local.txt

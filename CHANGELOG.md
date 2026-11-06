@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## v0.1.9
+
+- 门禁脚本不再把私人昵称、账号写死在源码里（那等于把要保护的东西印在门上）
+- 私人词改放 config/privacy.local.txt（已 gitignore），一行一条正则，只在本地生效
+- 新增 config/privacy.local.example.txt 模板，只有占位符
+
 ## v0.1.8
 
 - 左下角新增更新提示：仓库发了新版本就浮出来，写明「新版本 vX ← 现在是 vY」，点「一键更新」直接更

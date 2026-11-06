@@ -18,6 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# 通用规则：只写"长得像隐私"的形状，不写任何具体的人名 / 昵称 / 账号。
 # 规则名 -> (正则, 说明)。顺序就是报告里的顺序。
 RULES = [
     ("token", re.compile(r"P_[A-Za-z0-9]{20,}"), "OneBot / SnowLuma 的 access token"),
@@ -29,8 +30,29 @@ RULES = [
     ("pem", re.compile(r"BEGIN [A-Z ]*PRIVATE KEY"), "私钥"),
 ]
 
+# 具体的人名、昵称、账号，放在本地文件里，不进仓库：
+#   config/privacy.local.txt   一行一条正则，# 开头是注释
+# 这个文件已 gitignore，所以"要保护什么"本身不会被公开。
+LOCAL_WORDS = ROOT / "config" / "privacy.local.txt"
+
+
+def load_local_rules() -> list[tuple[str, re.Pattern, str]]:
+    if not LOCAL_WORDS.exists():
+        return []
+    rules = []
+    for line in LOCAL_WORDS.read_text(encoding="utf-8").splitlines():
+        word = line.strip()
+        if not word or word.startswith("#"):
+            continue
+        try:
+            rules.append(("私人词", re.compile(word), "本地 privacy.local.txt 里的词"))
+        except re.error as e:
+            print(f"[privacy] 本地规则写错了，跳过：{word}（{e}）")
+    return rules
+
 # 这些文件天然包含规则本身（比如本脚本），整份跳过
-SKIP_FILES = {"tools/privacy_gate.py"}
+SKIP_FILES = {"tools/privacy_gate.py", "config/privacy.local.txt"}
+RULES = RULES + load_local_rules()
 SKIP_DIRS = (".git/", "data/", ".test_tmp/", "__pycache__/", ".edge-")
 ALLOW_MARK = "privacy-allow"
 
