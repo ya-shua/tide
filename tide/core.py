@@ -146,6 +146,8 @@ class TideCore:
     def _apply_settings(self) -> None:
         """把设置写回各个模块；改完立刻生效，不用重启。"""
         st = self.settings.data
+        if not st.get("update_repo"):
+            st["update_repo"] = (self.rules.get("update") or {}).get("repo", "")
         self.char["name"] = st["name"]
         self.default_person = str(st["person"])
         self.rules["quiet_hours"] = [st["quiet_start"], st["quiet_end"]]
@@ -161,6 +163,11 @@ class TideCore:
         pro["max_unanswered"] = st["proactive_max_unanswered"]
         self.rules["proactive"] = pro
         self.memory.quote_ttl_h = st["memory_quote_hours"]
+        repo = str(st.get("update_repo") or "").strip()
+        if repo and repo != self.updater.repo:
+            self.updater.repo = repo
+            self.updater.state["checked_at"] = 0
+            self.updater.check_async()
         for b in self.bonds.values():          # 已经捏好的对象也套一遍
             b.mild, b.mid, b.big = (float(st["tier_mild"]), float(st["tier_mid"]),
                                     float(st["tier_big"]))

@@ -26,6 +26,7 @@ FIELDS = {
     "proactive_max_unanswered": ("连发几条没回就停", "num", 1, 5, 1, "主动", "条"),
     "memory_quote_hours": ("记得原话保留多久", "num", 0, 168, 1, "记忆", "小时"),
     "refresh_ms":  ("面板刷新间隔", "num", 500, 10000, 500, "面板", "毫秒"),
+    "update_repo": ("更新检查的仓库", "text", 0, 0, 0, "面板", "owner/repo，留空就不查"),
 }
 
 DEFAULTS = {
@@ -43,6 +44,7 @@ DEFAULTS = {
     "proactive_max_unanswered": 2,
     "memory_quote_hours": 12,
     "refresh_ms": 2000,
+    "update_repo": "",
 }
 
 _TIME_RE = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")

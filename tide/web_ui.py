@@ -31,6 +31,32 @@ HTML = r"""<!doctype html>
   .wrap{max-width:1000px;margin:0 auto}
   .card{background:var(--card);border:1px solid var(--line);border-radius:12px}
 
+  /* ── 每块自己的色调（不抢强调色，只是不再一片灰） ── */
+  .card{position:relative;transition:border-color .18s, box-shadow .18s;
+    border-color:color-mix(in srgb,var(--tone,#2b262e) 30%,var(--line))}
+  .card:hover{border-color:color-mix(in srgb,var(--tone,#3a333f) 42%,var(--line))}
+  .card::before{content:"";position:absolute;left:14px;top:-1px;width:34px;height:2px;
+    background:var(--tone,#4a4450);opacity:.9;border-radius:0 0 3px 3px}
+  @supports (background:color-mix(in srgb,red 6%,black)){
+    .card{background:linear-gradient(158deg,
+      color-mix(in srgb,var(--tone,#4a4450) 19%,var(--card)) 0%,
+      color-mix(in srgb,var(--tone,#4a4450) 7%,var(--card)) 46%,
+      var(--card) 78%)}
+  }
+  .hd h2::before,.m .lb::before{content:"";display:inline-block;width:6px;height:6px;
+    border-radius:99px;background:var(--tone,#6b6472);margin-right:8px;
+    vertical-align:1px;opacity:.95}
+  .hd h2,.m .lb{color:color-mix(in srgb,var(--tone,#746d79) 42%,var(--faint))}
+  .m .lb{color:color-mix(in srgb,var(--tone,#746d79) 48%,var(--faint))}
+  .tl h2,.dbg h2,.needs h2{color:color-mix(in srgb,var(--tone,#746d79) 45%,var(--faint))}
+  .now{--tone:#cf9db0}
+  .needs{--tone:#8fb4d6}
+  #rel-card{--tone:#d3a97b}
+  #emo-card{--tone:#b1a2d6}
+  #act-card{--tone:#7cc0b6}
+  .tl{--tone:#a89ed0}
+  .dbg{--tone:#8b93a4}
+
   /* ── 顶栏 ── */
   .top{display:flex;align-items:baseline;gap:10px;margin-bottom:18px}
   .top h1{font-size:16px;font-weight:600;letter-spacing:.02em}
@@ -85,7 +111,7 @@ HTML = r"""<!doctype html>
   .m.hot .n{color:#c6aebb}
   .act.on .big{color:var(--accent)}
   .meter{margin-top:10px;height:3px;border-radius:99px;background:#222932;overflow:hidden}
-  .meter i{display:block;height:100%;background:var(--steel);border-radius:99px}
+  .meter i{display:block;height:100%;background:var(--tone,#9db2c6);border-radius:99px;opacity:.9}
   .act.on .meter i{background:var(--accent)}
 
   /* ── ③ 五条需求 ── */
@@ -99,7 +125,17 @@ HTML = r"""<!doctype html>
     padding:4px 0}
   .nd .k{font-size:12.5px;color:var(--dim)}
   .nd .t{height:4px;border-radius:99px;background:#20262e;overflow:hidden}
-  .nd .t i{display:block;height:100%;border-radius:99px;background:var(--steel);opacity:.85}
+  .nd .t i{display:block;height:100%;border-radius:99px;background:var(--tone,#9db2c6);opacity:.9}
+  .nd[data-k="渴"] .t i{background:#7ea9d6}
+  .nd[data-k="饿"] .t i{background:#d3a97b}
+  .nd[data-k="累"] .t i{background:#a89ed0}
+  .nd[data-k="无聊"] .t i{background:#cf9db0}
+  .nd[data-k="想你"] .t i{background:#7cc0b6}
+  .nd[data-k="渴"] .k{color:#95b8d8}
+  .nd[data-k="饿"] .k{color:#d3b48f}
+  .nd[data-k="累"] .k{color:#b3abd6}
+  .nd[data-k="无聊"] .k{color:#cf9db0}
+  .nd[data-k="想你"] .k{color:#8dc8bf}
   .nd.hot .t i{background:var(--accent);opacity:1}
   .nd.hot .k,.nd.hot .v{color:var(--fg)}
   .nd .v{font-size:12.5px;color:var(--dim);text-align:right;font-variant-numeric:tabular-nums}
@@ -275,6 +311,17 @@ HTML = r"""<!doctype html>
   </section>
 
   <section class="page" id="page-debug">
+    <section class="card dbg" id="ver-card">
+      <div class="hd"><h2>版本与更新</h2><span class="cnt" id="ver-cnt"></span></div>
+      <p class="note">当前 <b id="ver-now" style="color:var(--fg)">—</b>
+         ｜ 面板 <span id="panel-url" style="color:var(--dim)">—</span>
+         ｜ 仓库 <a id="repo-link" class="vlink" target="_blank" rel="noreferrer">—</a></p>
+      <div class="controls" style="margin-top:10px">
+        <button id="chk">检查更新</button>
+        <button id="upd2" style="display:none">更新到最新</button>
+      </div>
+    </section>
+
     <section class="card dbg">
       <div class="hd"><h2>给 LLM 的软约束</h2><span class="cnt">机器看的，不是你读的</span></div>
       <pre id="prompt">—</pre>
@@ -466,6 +513,7 @@ function render(){
   const talk=(s.memory&&s.memory.talk)||{};
   el('idle').textContent=(talk.phrase&&talk.phrase!=='还没说过话')?('· '+talk.phrase):'';
   el('ver').textContent=s.version?('v'+s.version):'';
+  syncUpdateCard(s);
   const up=s.update||{};
   const upd=el('upd');
   if(up.has_update){
@@ -519,7 +567,7 @@ function render(){
   const top=needs[0];
   el('need-hint').textContent=adviceNeed(s,top[0])||'都还撑得住';
   el('needs').innerHTML=needs.map(([k,v],i)=>(
-    '<div class="nd'+(i===0&&v>=60?' hot':'')+'">'
+    '<div class="nd'+(i===0&&v>=60?' hot':'')+'" data-k="'+k+'">'
     +'<span class="k">'+k+'</span>'
     +'<span class="t"><i style="width:'+Math.max(0,Math.min(100,v))+'%"></i></span>'
     +'<span class="v">'+fmt(v)+'</span></div>')).join('');
@@ -619,7 +667,50 @@ function render(){
   el('prompt').textContent=plan.prompt;
 }
 
-  /* ── 分页：主页 / 记忆 / 调试 ── */
+  /* ── 版本 / 网址 / 检查更新 ── */
+function repoUrl(repo){
+  return repo ? 'https://github.com/'+repo : '';
+}
+function syncUpdateCard(s){
+  const up=s.update||{};
+  const repo=(s.settings&&s.settings.update_repo)||up.repo||'';
+  el('ver-now').textContent=s.version?('v'+s.version):'—';
+  el('panel-url').textContent=location.host;
+  const a=el('repo-link');
+  if(repo){ a.textContent=repo; a.href=repoUrl(repo); a.style.display=''; }
+  else { a.textContent='没配'; a.removeAttribute('href'); }
+  const cnt=el('ver-cnt');
+  if(up.applying){ cnt.textContent='正在更新…'; }
+  else if(up.error){ cnt.textContent=up.error; }
+  else if(up.has_update){ cnt.textContent='有新版本 '+up.latest; cnt.style.color='#cf9db0'; }
+  else if(up.latest){ cnt.textContent='已是最新'; cnt.style.color='#8fb87f'; }
+  else { cnt.textContent='还没查过'; cnt.style.color=''; }
+  const b=el('upd2');
+  if(up.has_update&&!up.applying){ b.style.display=''; b.textContent='更新到最新 '+up.latest; }
+  else b.style.display='none';
+}
+async function checkUpdate(){
+  const cnt=el('ver-cnt'); cnt.textContent='正在查…'; cnt.style.color='';
+  try{
+    const r=await fetch('/api/update?force=1');
+    const j=await r.json();
+    syncUpdateCard({version:(data&&data.snapshot&&data.snapshot.version)||'',update:j});
+    if(!j.has_update&&!j.error) cnt.textContent='已是最新';
+  }catch(e){ cnt.textContent='检查失败（没网？）'; }
+}
+async function doUpdate(){
+  const b=el('upd2');
+  if(!confirm('现在更新到最新版本？面板会自己重启一次。')) return;
+  b.disabled=true; b.textContent='正在更新…';
+  try{
+    const r=await fetch('/api/update',{method:'POST'});
+    const j=await r.json();
+    if(j.error){ alert(j.error); b.disabled=false; }
+    else b.textContent='更新中，面板马上重启';
+  }catch(e){ b.disabled=false; b.textContent='更新失败'; }
+}
+
+/* ── 分页：主页 / 记忆 / 调试 ── */
 const TABS={home:'此刻',memory:'记忆',debug:'调试'};
 function setTab(name){
   if(!TABS[name]) name='home';
@@ -682,6 +773,8 @@ async function saveSettings(){
   setTimeout(()=>{ if(smsg.textContent==='已保存') smsg.textContent=''; },1600);
 }
 el('gear').onclick=openSettings;
+el('chk').onclick=checkUpdate;
+el('upd2').onclick=doUpdate;
 el('s-close').onclick=closeSettings;
 el('s-save').onclick=saveSettings;
 scrim.onclick=closeSettings;
