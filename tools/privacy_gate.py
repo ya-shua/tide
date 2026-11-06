@@ -20,15 +20,26 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # 通用规则：只写"长得像隐私"的形状，不写任何具体的人名 / 昵称 / 账号。
 # 规则名 -> (正则, 说明)。顺序就是报告里的顺序。
+# 第三项可以再带一个判断函数：返回 False 表示这一处不算。
 RULES = [
     ("token", re.compile(r"P_[A-Za-z0-9]{20,}"), "OneBot / SnowLuma 的 access token"),
-    ("qq", re.compile(r"(?<![\d.])\d{8,}(?![\d.])"), "8 位以上连续数字（QQ 号、时间戳之类的隐私）"),
+    ("mobile", re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)"), "手机号"),
+    ("qq", re.compile(r"(?<![\w#.])\d{5,10}(?![\w.])"), "QQ 号 / 一串不该见光的数字"),
     ("home", re.compile(r"[A-Za-z]:\\+(?:AI|Users\\+[A-Za-z]+)\\", re.I), "本机绝对路径"),
     ("email", re.compile(r"[\w.+-]+@[\w-]+\.[A-Za-z]{2,}"), "邮箱"),
     ("secret", re.compile(r"ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}"),
      "别的平台的密钥"),
     ("pem", re.compile(r"BEGIN [A-Z ]*PRIVATE KEY"), "私钥"),
 ]
+
+# 这些数字串看着像 QQ 号，其实是代码里的常量（文件模式、毫秒、代码页……）。
+SAFE_NUMBERS = {
+    "100644", "100755", "120000", "160000", "040000",   # git 文件模式
+    "10000", "65001", "65535", "4294967295",            # 上限、代码页、掩码
+    "100000", "3600000",                                 # 常见的「一秒/一小时」毫秒数
+}
+
+HEX_COLOR = re.compile(r"#[0-9a-fA-F]{3,8}\b")
 
 # 具体的人名、昵称、账号，放在本地文件里，不进仓库：
 #   config/privacy.local.txt   一行一条正则，# 开头是注释
@@ -40,7 +51,7 @@ def load_local_rules() -> list[tuple[str, re.Pattern, str]]:
     if not LOCAL_WORDS.exists():
         return []
     rules = []
-    for line in LOCAL_WORDS.read_text(encoding="utf-8").splitlines():
+    for line in LOCAL_WORDS.read_text(encoding="utf-8-sig").splitlines():
         word = line.strip()
         if not word or word.startswith("#"):
             continue
@@ -49,6 +60,20 @@ def load_local_rules() -> list[tuple[str, re.Pattern, str]]:
         except re.error as e:
             print(f"[privacy] 本地规则写错了，跳过：{word}（{e}）")
     return rules
+
+
+def _looks_private_number(m: re.Match, line: str) -> bool:
+    """数字串是不是真该拦：刨掉色值、文件模式这些常量。"""
+    value = m.group(0)
+    if value in SAFE_NUMBERS:
+        return False
+    for hx in HEX_COLOR.finditer(line):
+        if hx.start() <= m.start() < hx.end():
+            return False
+    return True
+
+
+NUMBER_CHECK = {"qq": _looks_private_number}
 
 # 这些文件天然包含规则本身（比如本脚本），整份跳过
 SKIP_FILES = {"tools/privacy_gate.py", "config/privacy.local.txt"}
@@ -115,6 +140,9 @@ def scan(files: list[str], reader) -> list[tuple[str, int, str, str, str]]:
             for name, rx, why in RULES:
                 m = rx.search(line)
                 if not m:
+                    continue
+                check = NUMBER_CHECK.get(name)
+                if check and not check(m, line):
                     continue
                 hits.append((norm, lineno, name, m.group(0), why if not allowed else "已放行"))
     return hits
