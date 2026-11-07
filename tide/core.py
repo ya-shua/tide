@@ -71,6 +71,25 @@ class TideCore:
         self.default_person = str(self.rules.get("default_person") or "主人")
         self._angry_factor = float((self.rules.get("neglect") or {}).get("angry_factor", 0.5))
 
+        # 主动打扰那一套：阈值 / 冷却三模式 / 打扰上限 / 自动免打扰
+        wk = dict(self.rules.get("wake") or {})
+        self.wake_cfg = {
+            "longing": float(wk.get("longing", 60)),
+            "boredom": float(wk.get("boredom", 60)),
+            "worried": float(wk.get("worried", 70)),
+            "cooldown_mode": str(wk.get("cooldown_mode", "dec")),
+            "cooldown_min": float(wk.get("cooldown_min", 90)),
+            "cooldown_step": float(wk.get("cooldown_step", 20)),
+            "max_wakes": int(wk.get("max_wakes", 6)),
+            "auto_dnd_after": int(wk.get("auto_dnd_after", 3)),
+            "dnd_manual_rate": float(wk.get("dnd_manual_rate", 1.0)),
+            "dnd_auto_rate": float(wk.get("dnd_auto_rate", 2.0)),
+            "dnd_none_rate": float(wk.get("dnd_none_rate", 4.0)),
+        }
+        self.dnd = "off"                 # off / manual / auto
+        self.wake_marks = []             # 今天叫醒过几次（时间戳）
+        self.last_wake_at = 0.0
+
         emo_cfg = (self.cfg.get("emotion") or {})
         self.emotion = emo_mod.Emotion(
             baseline=emo_cfg.get("baseline") or self.char.get("baseline"),
@@ -163,6 +182,19 @@ class TideCore:
         pro["max_unanswered"] = st["proactive_max_unanswered"]
         self.rules["proactive"] = pro
         self.memory.quote_ttl_h = st["memory_quote_hours"]
+        # 面板上的"主动"那组：直接改叫醒条件，不用重启
+        for key, field in (("longing", "wake_longing"), ("boredom", "wake_boredom"),
+                           ("worried", "wake_worried"),
+                           ("cooldown_min", "wake_cooldown_min"),
+                           ("auto_dnd_after", "wake_auto_dnd_after")):
+            if field in st:
+                self.wake_cfg[key] = float(st[field])
+        if "wake_max" in st:
+            self.wake_cfg["max_wakes"] = int(st["wake_max"])
+        if st.get("wake_cooldown_mode") in ("dec", "fixed", "inc"):
+            self.wake_cfg["cooldown_mode"] = st["wake_cooldown_mode"]
+        if "wake_hold_min" in st:
+            self.needs.hold_min = float(st["wake_hold_min"])
         repo = str(st.get("update_repo") or "").strip()
         if repo and repo != self.updater.repo:
             self.updater.repo = repo
@@ -305,12 +337,45 @@ class TideCore:
         for pid in list(self.topics.keys()):
             self.topics[pid].maybe_close(t)   # 收尾判断按整段做一次，不要每段都判
         self._boredom_mood(secs)
+        self._refresh_dnd()
+        self._dnd_flow(secs, t)
         self._absorb_self_care(secs, t)
 
         self.last_tick = t
 
+    # ---------- 免打扰 ----------
+    def _refresh_dnd(self) -> str:
+        """manual 由人按按钮；auto 是"连着几条没回，她开始觉得你在忙"。"""
+        if self.dnd == "manual":
+            return self.dnd
+        need = self.wake_cfg["auto_dnd_after"]
+        if need > 0 and self.unanswered_proactive >= need:
+            self.dnd = "auto"
+        elif self.unanswered_proactive == 0:
+            self.dnd = "off"
+        return self.dnd
+
+    def set_dnd(self, on: bool) -> str:
+        self.dnd = "manual" if on else "off"
+        return self.dnd
+
+    def _dnd_flow(self, secs: float, t: float) -> None:
+        """等回音的时候委屈在涨；免打扰只是让它涨得慢一点，不是不涨。"""
+        if secs <= 0 or self.unanswered_proactive <= 0:
+            return
+        key = {"manual": "dnd_manual_rate", "auto": "dnd_auto_rate"}.get(
+            self.dnd, "dnd_none_rate")
+        rate = float(self.wake_cfg.get(key, 4.0))
+        add = rate * secs / 3600.0
+        if add <= 0:
+            return
+        self._apply_bond(self._bond(self.default_person),
+                         {"grievance": add}, ["dnd:" + self.dnd], t)
+
     # ---------- 输入 ----------
-    def observe(self, text=None, speaker="other", person=None, at=None) -> dict:
+    def observe(self, text=None, speaker="other", person=None, at=None,
+                initiated: bool = False) -> dict:
+        """initiated=True：她自己主动开口（不是回你），会开启缓解期。"""
         t = float(at) if at is not None else self.now()
         self._advance(t)
         pid = str(person or self.default_person)
@@ -335,7 +400,18 @@ class TideCore:
         if speaker == "self":
             topic.on_self(text or "", t)
             record["kind"] = "self_message"
+            if initiated:
+                # 她主动开口：想念不降，但开始"缓一缓"；等回音期间委屈会涨
+                self.needs.spoke(t, bond.affinity)
+                self.unanswered_proactive += 1
+                self._refresh_dnd()
+                record["kind"] = "self_initiated"
+                record["hold_until"] = round(self.needs.hold_until, 1)
         else:
+            idle_h = max(0.0, (t - self.needs.last_seen) / 3600.0) if self.needs.last_seen else 0.0
+            # 只有"她真的在等你回音"的时候，久等才算委屈；一般聊天间隔不算
+            waiting = self.unanswered_proactive > 0
+            was_dnd = self._refresh_dnd()
             topic.on_other(text or "", t)
             res = self.appraiser.evaluate(text or "")
             for label, delta in res.emotion.items():
@@ -348,14 +424,25 @@ class TideCore:
                     res.bond.pop("grievance", None)
             self._apply_bond(bond, res.bond, res.tags, t)
             self.needs.apply(res.needs)
-            self.needs.touched(t)
+            # 你终于回了：想念降下来但留余温；被晾着的委屈这时候才炸
+            self.needs.touched(t, bond.affinity)
+            late = min(50.0, 6.0 * idle_h) if (waiting and idle_h >= 0.5) else 0.0
+            if late > 0:
+                self._apply_bond(bond, {"grievance": late}, ["replied_late"], t)
+                self.emotion.add("annoyed", min(0.25, late / 200.0))
+                # 久别重逢：先高兴一下，再算委屈的账
+                self.emotion.add("joyful", 0.2)
+                record["late_grievance"] = round(late, 1)
             self.unanswered_proactive = 0
+            self.dnd = "off"
             record.update(
                 {
                     "kind": "other_message",
                     "tags": res.tags,
                     "mood": res.mood,
                     "directed": res.directed,
+                    "idle_h": round(idle_h, 2),
+                    "was_dnd": was_dnd,
                     "deltas": {
                         "emotion": {k: round(v, 3) for k, v in res.emotion.items()},
                         "bond": {k: round(v, 2) for k, v in res.bond.items()},
@@ -415,6 +502,81 @@ class TideCore:
         self.save()
         return self.snapshot(at=t)
 
+    # ---------- 该不该叫醒她 ----------
+    def _wakes_today(self, t: float) -> int:
+        import time as _time
+        day = _time.strftime("%Y-%m-%d", _time.localtime(t))
+        return sum(1 for x in self.wake_marks
+                   if _time.strftime("%Y-%m-%d", _time.localtime(x)) == day)
+
+    def _cooldown_now(self, t: float) -> float:
+        """冷却三模式：递减（越等越急）/ 固定 / 递增（越等越克制）。"""
+        mode = str(self.wake_cfg.get("cooldown_mode") or "dec")
+        base = float(self.wake_cfg.get("cooldown_min") or 90)
+        step = float(self.wake_cfg.get("cooldown_step") or 20)
+        n = max(0, self._wakes_today(t) - 1) if self.wake_marks else 0
+        if mode == "dec":
+            return max(5.0, base - step * n)
+        if mode == "inc":
+            return base + step * n
+        return base
+
+    def should_wake(self, at=None) -> dict:
+        """现在要不要叫醒她（只判断，不叫）。"""
+        t = float(at) if at is not None else self.now()
+        self._refresh_dnd()
+        pid = self.default_person
+        bond = self._bond(pid)
+        needs = self.needs.to_dict(t, bond.affinity)
+        worried = self.emotion.levels.get("worried", 0.0) * 100
+        cfg = self.wake_cfg
+        wishes = {
+            "longing": needs["longing"] >= cfg["longing"],
+            "boredom": needs["boredom"] >= cfg["boredom"],
+            "worried": worried >= cfg["worried"],
+        }
+        count = self._wakes_today(t)
+        cooldown = self._cooldown_now(t)
+        out = {
+            "wake": False, "why": "", "dnd": self.dnd,
+            "wishes": wishes, "needs": needs, "worried": round(worried, 1),
+            "count_today": count, "max_wakes": cfg["max_wakes"],
+            "cooldown_min": round(cooldown, 1),
+            "next_in_min": None,
+        }
+        if self.dnd == "manual":
+            out["why"] = "你开了免打扰，她知道你在忙"
+            return out
+        if self.is_quiet(t):
+            out["why"] = "休息时间"
+            return out
+        if not any(wishes.values()):
+            out["why"] = "还不到想找你的程度"
+            return out
+        if cfg["max_wakes"] > 0 and count >= cfg["max_wakes"]:
+            out["why"] = f"今天已经找过你 {count} 次，忍住了"
+            return out
+        wait = cooldown - (t - self.last_wake_at) / 60.0 if self.last_wake_at else 0.0
+        if wait > 0:
+            out["why"] = f"还在冷却（还要 {wait:.0f} 分钟）"
+            out["next_in_min"] = round(wait, 1)
+            return out
+        out["wake"] = True
+        hit = [k for k, v in wishes.items() if v]
+        out["why"] = "；".join(
+            {"longing": f"想你 {needs['longing']:.0f}",
+             "boredom": f"无聊 {needs['boredom']:.0f}",
+             "worried": f"担心 {worried:.0f}"}[k] for k in hit)
+        return out
+
+    def mark_woke(self, at=None) -> dict:
+        t = float(at) if at is not None else self.now()
+        self.last_wake_at = t
+        self.wake_marks.append(t)
+        self.wake_marks = self.wake_marks[-50:]
+        self.save()
+        return {"at": t, "count_today": self._wakes_today(t)}
+
     # ---------- 输出 ----------
     # ---------- 主动开口 & 发出去 ----------
     def pending_message(self, at=None) -> dict | None:
@@ -451,6 +613,7 @@ class TideCore:
         if ok:
             self.last_proactive_at = msg["at"]
             self.unanswered_proactive += 1
+            self.mark_woke(msg["at"])
             self.memory.add(msg["at"], "event", "主动找你：" + msg["text"],
                             person=self.default_person, weight=2)
         self.save()
@@ -474,8 +637,13 @@ class TideCore:
                 "label": self.emotion.label,
                 "intensity": self.emotion.intensity,
                 "pad": self.emotion.pad(),
+                "accounts": self.emotion.accounts(),
+                "breakdown": self.emotion.breakdown(),
                 "raw": {k: round(v, 3) for k, v in self.emotion.levels.items()},
             },
+            "feelings": self._feelings(t, pid),
+            "dnd": self.dnd,
+            "wake": self.should_wake(t),
             "needs": needs,
             "bond": bond.to_dict(t),
             "topic": {
@@ -506,6 +674,43 @@ class TideCore:
             "last_pos": self.memory.describe(pos, t) if pos else None,
             "talk": {"idle_min": idle_min, "phrase": mem_mod.phrase_idle(idle_min)},
         }
+
+    # ---------- 表达 ----------
+    FEEL_WORD = {
+        "angry": "生气", "annoyed": "闷", "jealous": "有点吃醋",
+        "worried": "担心", "uneasy": "不太安心", "sad": "难过",
+        "disappointed": "失望", "lonely": "孤单", "nostalgic": "有点怀念",
+        "yearning": "想他", "scared": "害怕", "guilty": "心虚",
+        "shy": "害羞", "proud": "得意", "joyful": "开心", "excited": "兴奋",
+        "playful": "想闹", "grateful": "感动", "hopeful": "期待",
+        "surprised": "意外", "embarrassed": "尴尬", "tired": "累", "bored": "没劲",
+    }
+
+    def _feelings(self, t: float, pid: str) -> str:
+        """把状态翻译成第一人称的感受，不是体检报告。"""
+        bond = self._bond(pid)
+        needs = self.needs.to_dict(t, bond.affinity)
+        bits = []
+        for item in self.emotion.breakdown(limit=3):
+            v = item["value"]
+            if v < 12:
+                continue
+            word = self.FEEL_WORD.get(item["label"], item["label"])
+            bits.append(("有点" if v < 35 else "很") + word)
+        if needs["longing"] >= 55 and "longing" not in [b for b in bits]:
+            bits.append("想他" if needs["longing"] < 80 else "很想他")
+        if needs["hunger"] >= 70:
+            bits.append("饿")
+        if needs["energy"] >= 70:
+            bits.append("累")
+        if needs["boredom"] >= 55:
+            bits.append("闲得慌")
+        if not bits:
+            return "没什么特别的心情，挺平静的。"
+        text = "，".join(bits)
+        if self.unanswered_proactive > 0:
+            text += "。刚才找过他，还没回音"
+        return "心里" + text + "。"
 
     def plan_reply(self, person=None, at=None) -> dict:
         t = float(at) if at is not None else self.now()
@@ -538,16 +743,16 @@ class TideCore:
             self.is_quiet(t), self.unanswered_proactive, self.last_proactive_at, t,
         )
 
+        # 不写"上限多少字""禁止说什么"——那些是拿规则压她；
+        # 只把此刻的心情用第一人称说给她听，剩下的交给性格。
         prompt = (
-            f"当前情绪：{label}（强度 {self.emotion.intensity:.2f}）\n"
-            f"需求：饿 {needs['hunger']:.0f}｜累 {needs['energy']:.0f}｜想你 {needs['longing']:.0f}｜无聊 {needs['boredom']:.0f}\n"
+            f"你现在的心情：{self._feelings(t, pid)}\n"
+            f"需求：饿 {needs['hunger']:.0f}｜累 {needs['energy']:.0f}｜"
+            f"想你 {needs['longing']:.0f}｜无聊 {needs['boredom']:.0f}\n"
             f"关系：亲和 {bond.affinity:.0f}｜委屈 {bond.grievance:.0f}（{mood}"
             + (f"·{bond.hint(t)}" if bond.hint(t) else "")
             + "）\n"
-            f"话题：{topic.state}｜{'在等你回答' if topic.her_last_asked else '没在等'}\n"
-            f"→ 回复长度上限：{max_chars} 字\n"
-            f"→ 语气：{tone}\n"
-            f"→ 禁止：{'；'.join(banned) if banned else '无'}"
+            f"话题：{topic.state}｜{'在等你回答' if topic.her_last_asked else '没在等'}"
         )
 
         return {
@@ -574,6 +779,9 @@ class TideCore:
             "offset": self.offset,
             "unanswered_proactive": self.unanswered_proactive,
             "last_proactive_at": self.last_proactive_at,
+            "dnd": self.dnd,
+            "wake_marks": self.wake_marks[-50:],
+            "last_wake_at": self.last_wake_at,
             "emotion": self.emotion.to_dict(),
             "needs": self.needs.save(),
             "bonds": {pid: b.save() for pid, b in self.bonds.items()},
@@ -602,6 +810,9 @@ class TideCore:
         self.offset = float(data.get("offset", 0.0))
         self.unanswered_proactive = int(data.get("unanswered_proactive", 0))
         self.last_proactive_at = float(data.get("last_proactive_at", 0.0))
+        self.dnd = str(data.get("dnd", "off")) if data.get("dnd") in ("off", "manual", "auto") else "off"
+        self.wake_marks = [float(x) for x in (data.get("wake_marks") or [])][-50:]
+        self.last_wake_at = float(data.get("last_wake_at", 0.0))
         self.log = data.get("log") or []
 
         emo_cfg = self.cfg.get("emotion") or {}
@@ -625,6 +836,9 @@ class TideCore:
         self.last_tick = 0.0
         self.unanswered_proactive = 0
         self.last_proactive_at = 0.0
+        self.dnd = "off"
+        self.wake_marks = []
+        self.last_wake_at = 0.0
         self.log = []
         self.emotion = emo_mod.Emotion(
             baseline=(self.cfg.get("emotion") or {}).get("baseline") or self.char.get("baseline"),

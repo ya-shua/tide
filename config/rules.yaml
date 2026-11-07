@@ -16,10 +16,28 @@ needs:
   boredom_per_hour: 20
   longing_tau_hours: 6.0
   longing_affinity_boost: 0.8   # tau = 6h * max(0.3, 1.4 - 0.8*affinity/100)
+  hold_min: 120                 # 她开口后，想念暂停上涨多久（表达缓解期）
+  longing_residual: 12          # 你回复后留下的余温（不会瞬间归零）
+  residual_min: 20              # 余温持续多久
   init_hunger: 10
   init_thirst: 12
   init_energy: 20
   init_boredom: 20
+
+# ---- 叫醒她的条件（阈值触发，不是定时） ----
+wake:
+  longing: 60                   # 想念到多少叫她
+  boredom: 60                   # 无聊到多少叫她
+  worried: 70                   # 担心到多少叫她
+  cooldown_mode: dec            # dec 递减 / fixed 固定 / inc 递增
+  cooldown_min: 90              # 第一次叫醒后至少隔多久（分钟）
+  cooldown_step: 20             # 递减/递增每次动多少
+  max_wakes: 6                  # 一天最多叫醒几次，0 = 无上限
+  auto_dnd_after: 3             # 连发几条没回，她就觉得你在忙（0 = 关）
+  dnd_manual_rate: 1.0          # 手动免打扰时，委屈每小时涨多少
+  dnd_auto_rate: 2.0            # 自动推断"你在忙"时
+  dnd_none_rate: 4.0            # 完全没音信时
+  auto_send: false              # 她能不能自己往外发；默认 false，由海螺来问 should_wake
 
 # ---- 话题生命周期（文档 §6.1） ----
 topic:

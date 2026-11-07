@@ -520,7 +520,8 @@ function innerVoice(s){
 function render(){
   if(!data) return;
   const s=data.snapshot, plan=data.plan, b=s.bond, n=s.needs, series=data.series||[];
-  const lv=s.emotion.raw||{};
+  const lv={};
+  (s.emotion.breakdown||[]).forEach(it=>{lv[it.label]=(it.value||0)/100;});
   const p2=v=>String(v).padStart(2,'0');
   const dt=s.now?new Date(s.now):null;
   el('clock').textContent=(dt?(dt.getMonth()+1)+'月'+p2(dt.getDate())+'日 '+p2(dt.getHours())+':'+p2(dt.getMinutes()):'—')

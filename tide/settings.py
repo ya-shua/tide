@@ -24,6 +24,14 @@ FIELDS = {
     "proactive_threshold": ("主动开口的门槛", "num", 10, 150, 5, "主动", ""),
     "proactive_cooldown_min": ("两条主动消息至少隔", "num", 5, 480, 5, "主动", "分钟"),
     "proactive_max_unanswered": ("连发几条没回就停", "num", 1, 5, 1, "主动", "条"),
+    "wake_longing": ("想念到多少就叫醒她", "num", 20, 100, 5, "主动", ""),
+    "wake_boredom": ("无聊到多少就叫醒她", "num", 20, 100, 5, "主动", ""),
+    "wake_worried": ("担心到多少就叫醒她", "num", 20, 100, 5, "主动", ""),
+    "wake_auto_dnd_after": ("几条没回就当你在忙", "num", 0, 10, 1, "主动", "条，0 关闭"),
+    "wake_max": ("一天最多叫醒几次", "num", 0, 50, 1, "主动", "0 不限"),
+    "wake_hold_min": ("开口后想念停涨多久", "num", 0, 720, 10, "主动", "分钟"),
+    "wake_cooldown_min": ("两次叫醒至少隔", "num", 5, 480, 5, "主动", "分钟"),
+    "wake_cooldown_mode": ("冷却怎么变", "text", 0, 0, 0, "主动", "dec 递减 / fixed 固定 / inc 递增"),
     "memory_quote_hours": ("记得原话保留多久", "num", 0, 168, 1, "记忆", "小时"),
     "refresh_ms":  ("面板刷新间隔", "num", 500, 10000, 500, "面板", "毫秒"),
     "update_repo": ("更新检查的仓库", "text", 0, 0, 0, "面板", "owner/repo，留空就不查"),
@@ -42,6 +50,14 @@ DEFAULTS = {
     "proactive_threshold": 60,
     "proactive_cooldown_min": 90,
     "proactive_max_unanswered": 2,
+    "wake_longing": 60,
+    "wake_boredom": 60,
+    "wake_worried": 70,
+    "wake_auto_dnd_after": 3,
+    "wake_max": 6,
+    "wake_hold_min": 120,
+    "wake_cooldown_min": 90,
+    "wake_cooldown_mode": "dec",
     "memory_quote_hours": 12,
     "refresh_ms": 2000,
     "update_repo": "",
@@ -108,6 +124,10 @@ class Settings:
         big = clean.get("tier_big", self.data["tier_big"])
         if not (mild < mid < big):
             raise ValueError("三个门槛要依次变大：小情绪 < 赌气 < 气还没消")
+        mode = str(clean.get("wake_cooldown_mode", self.data.get("wake_cooldown_mode", "dec"))).lower()
+        if mode not in ("dec", "fixed", "inc"):
+            raise ValueError("冷却模式只能是 dec（递减）/ fixed（固定）/ inc（递增）")
+        clean["wake_cooldown_mode"] = mode
         self.data.update(clean)
         self.save()
         return dict(self.data)

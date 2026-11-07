@@ -90,14 +90,20 @@ def make_handler(core: TideCore):
     return Handler
 
 
-def brain_loop(core: TideCore, every: float = 60.0) -> None:
-    """她的心跳：定期看一眼"现在该不该开口"。发不出去也不影响面板。"""
+def brain_loop(core: TideCore, every: float = 60.0, send: bool = False) -> None:
+    """她的心跳：定期把状态往前推、落盘。
+
+    **默认不发消息**（2026-11-07 定）：开不开口是她的决定，不是插件替她决定。
+    只有配置里显式打开 wake.auto_send 才发。
+    """
     import time as _t
     while True:
         _t.sleep(every)
         try:
-            core.send_proactive()   # 该开口就发
-            core.save()             # 顺手把这段时间的状态落盘，别等出事才想起存档
+            if send:
+                core.send_proactive()
+            else:
+                core.tick()        # 推进时间 + 存档，顺手算出 should_wake
         except Exception:
             pass
 
@@ -126,9 +132,12 @@ def main(argv=None) -> None:
         arg("--config", root / "config"),
         state_path=Path(arg("--state", root / "data" / "state.json")),
     )
-    if "--brain" in argv or core.qq.enabled:
-        # 她自己的心跳：每分钟看一眼该不该开口（睡着时会被 is_quiet 拦住）
-        threading.Thread(target=brain_loop, args=(core,), daemon=True).start()
+    auto_send = bool((core.rules.get("wake") or {}).get("auto_send", False))
+    if auto_send and ("--brain" in argv or core.qq.enabled):
+        # 只有显式开了 auto_send 才让她自己往外发；默认只推进状态
+        threading.Thread(target=brain_loop, args=(core, 60.0, True), daemon=True).start()
+    elif "--brain" in argv or core.qq.enabled:
+        threading.Thread(target=brain_loop, args=(core, 60.0, False), daemon=True).start()
     port = int(arg("--port", 7880))
     core.updater.port = port            # 更新完要重启回同一个端口
     core.updater.check_async()          # 后台查一次有没有新版本，不挡启动
