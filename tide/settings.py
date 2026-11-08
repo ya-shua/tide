@@ -21,6 +21,12 @@ FIELDS = {
     "comfort_cooldown_min": ("哄一次之后多久能再算数", "num", 1, 120, 1, "脾气", "分钟"),
     "quiet_start": ("安静开始", "time", 0, 0, 0, "节奏", ""),
     "quiet_end":   ("安静结束", "time", 0, 0, 0, "节奏", ""),
+    "sleep_normal":  ("平时几点睡", "time", 0, 0, 0, "作息", ""),
+    "sleep_earliest": ("累狠了最早几点睡", "time", 0, 0, 0, "作息", ""),
+    "sleep_latest":  ("心里有事最晚几点睡", "time", 0, 0, 0, "作息", ""),
+    "sleep_mood_delay": ("情绪最晚能拖多久", "num", 0, 4, 0.5, "作息", "小时"),
+    "sleep_min_h":   ("最少睡多久", "num", 3, 10, 0.5, "作息", "小时"),
+    "sleep_max_h":   ("最多睡多久", "num", 4, 12, 0.5, "作息", "小时"),
     "proactive_threshold": ("主动开口的门槛", "num", 10, 150, 5, "主动", ""),
     "proactive_cooldown_min": ("两条主动消息至少隔", "num", 5, 480, 5, "主动", "分钟"),
     "proactive_max_unanswered": ("连发几条没回就停", "num", 1, 5, 1, "主动", "条"),
@@ -47,6 +53,12 @@ DEFAULTS = {
     "comfort_cooldown_min": 10,
     "quiet_start": "00:30",
     "quiet_end": "07:30",
+    "sleep_normal": "23:30",
+    "sleep_earliest": "21:30",
+    "sleep_latest": "02:00",
+    "sleep_mood_delay": 2,
+    "sleep_min_h": 6,
+    "sleep_max_h": 9,
     "proactive_threshold": 60,
     "proactive_cooldown_min": 90,
     "proactive_max_unanswered": 2,
@@ -128,6 +140,10 @@ class Settings:
         if mode not in ("dec", "fixed", "inc"):
             raise ValueError("冷却模式只能是 dec（递减）/ fixed（固定）/ inc（递增）")
         clean["wake_cooldown_mode"] = mode
+        lo = clean.get("sleep_min_h", self.data.get("sleep_min_h", 6))
+        hi = clean.get("sleep_max_h", self.data.get("sleep_max_h", 9))
+        if lo > hi:
+            raise ValueError("最少睡多久不能比最多还大")
         self.data.update(clean)
         self.save()
         return dict(self.data)

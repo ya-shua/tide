@@ -19,12 +19,25 @@ from .core import TideCore
 from .forecast import forecast
 
 
-def payload(core: TideCore) -> dict:
+LOCK = threading.Lock()
+
+
+def payload(core: TideCore, person: str | None = None) -> dict:
+    with LOCK:
+        snap = core.snapshot(person=person)
+        plan = core.plan_reply(person=person)
     return {
-        "snapshot": core.snapshot(),
-        "plan": core.plan_reply(),
+        "snapshot": snap,
+        "plan": plan,
         "series": forecast(core, hours=24.0, step_h=0.5),
     }
+
+
+def _query(path: str) -> dict:
+    from urllib.parse import parse_qs, urlparse
+
+    q = parse_qs(urlparse(path).query)
+    return {k: v[0] for k, v in q.items() if v}
 
 
 def make_handler(core: TideCore):
@@ -48,7 +61,18 @@ def make_handler(core: TideCore):
             if path in ("/", "/index.html"):
                 self._send(200, HTML, "text/html; charset=utf-8")
             elif path == "/api/state":
-                self._send(200, json.dumps(payload(core), ensure_ascii=False))
+                person = _query(self.path).get("person")
+                if person:
+                    with LOCK:
+                        snap = core.snapshot(person=person)
+                        plan = core.plan_reply(person=person)
+                    body = json.dumps({"snapshot": snap, "plan": plan}, ensure_ascii=False)
+                else:
+                    body = json.dumps(payload(core), ensure_ascii=False)
+                self._send(200, body)
+            elif path == "/api/health":
+                self._send(200, json.dumps({"ok": True, "person": core.default_person},
+                                           ensure_ascii=False))
             elif path == "/api/settings":
                 self._send(200, json.dumps(core.settings.public(), ensure_ascii=False))
             elif path == "/api/update":
@@ -67,17 +91,32 @@ def make_handler(core: TideCore):
             result = None
             try:
                 if path == "/api/observe":
-                    core.observe(text=data.get("text", ""), speaker=data.get("speaker", "other"))
+                    person = data.get("person") or None
+                    with LOCK:
+                        core.observe(
+                            text=data.get("text", ""),
+                            speaker=data.get("speaker", "other"),
+                            person=person,
+                            initiated=bool(data.get("initiated", False)),
+                        )
+                elif path == "/api/woke":
+                    with LOCK:
+                        result = core.mark_woke()
                 elif path == "/api/event":
-                    core.event(data.get("name", ""))
+                    with LOCK:
+                        core.event(data.get("name", ""))
                 elif path == "/api/advance":
-                    core.advance(float(data.get("hours", 1)))
+                    with LOCK:
+                        core.advance(float(data.get("hours", 1)))
                 elif path == "/api/reset":
-                    core.reset()
+                    with LOCK:
+                        core.reset()
                 elif path == "/api/settings":
-                    result = core.update_settings(data)
+                    with LOCK:
+                        result = core.update_settings(data)
                 elif path == "/api/say":
-                    result = core.send_proactive()
+                    with LOCK:
+                        result = core.send_proactive()
                 elif path == "/api/update":
                     result = core.updater.apply()
                 self._send(200, json.dumps(result if result is not None else payload(core),

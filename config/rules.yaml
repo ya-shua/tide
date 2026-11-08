@@ -17,8 +17,8 @@ needs:
   longing_tau_hours: 6.0
   longing_affinity_boost: 0.8   # tau = 6h * max(0.3, 1.4 - 0.8*affinity/100)
   hold_min: 120                 # 她开口后，想念暂停上涨多久（表达缓解期）
-  longing_residual: 12          # 你回复后留下的余温（不会瞬间归零）
-  residual_min: 20              # 余温持续多久
+  comfort_half_life_h: 3.0      # 被回应的满足感多久退一半（退了想念又浮上来）
+  comfort_cap: 0.9              # 满足感最多压掉多少想念
   init_hunger: 10
   init_thirst: 12
   init_energy: 20

@@ -28,7 +28,11 @@ class WakeBase(unittest.TestCase):
             self.state_path.unlink()
 
     def idle_hours(self, h: float):
+        """模拟"已经 h 小时没人理她"：存量和时间戳一起摆好。"""
         self.core.needs.last_seen = T0 - h * H
+        self.core.needs.longing_at = T0 - h * H
+        self.core.needs.longing_value = 0.0
+        self.core.needs.hold_until = 0.0
         self.core.last_tick = T0
 
     def longing(self, t):
@@ -46,13 +50,50 @@ class TestHoldPeriod(WakeBase):
         self.assertAlmostEqual(self.longing(T0 + 1 * H), after, delta=1.0)  # 冻结
         self.assertGreater(self.longing(T0 + 3 * H), after)                 # 过了缓解期再涨
 
-    def test_reply_leaves_residual(self):
+    def test_one_perfunctory_reply_barely_helps(self):
+        """回一句"嗯"不能让她就不想了。"""
         self.idle_hours(8)
-        self.core.observe(text="在忙吗", speaker="self", at=T0, initiated=True)
-        self.core.observe(text="刚在忙", speaker="other", at=T0 + 60)
-        self.assertAlmostEqual(self.longing(T0 + 120), 12, delta=2.0)
-        # 余温窗口过了，从 12 接着往上爬
-        self.assertGreater(self.longing(T0 + 3 * H), 12)
+        before = self.longing(T0)
+        self.core.observe(text="嗯", speaker="other", at=T0)
+        after = self.longing(T0)
+        self.assertGreater(after, before * 0.8)      # 最多降两成
+        self.assertGreater(after, 40)
+
+    def test_a_real_conversation_helps_a_lot(self):
+        self.idle_hours(8)
+        before = self.longing(T0)
+        lines = ["今天忙完了，跟你说个事",
+                 "下午那个会开得我头都大了，一直拖到六点",
+                 "你呢，今天有没有好好吃饭？",
+                 "晚上要不要一起看点什么？",
+                 "我买了你爱吃的那个，明天带给你"]
+        for i, line in enumerate(lines):
+            self.core.observe(text=line, speaker="other", at=T0 + i * 30)
+        after = self.longing(T0 + 5 * 30)
+        self.assertLess(after, before * 0.6)         # 真聊一场，降得多
+
+    def test_after_a_real_talk_it_stays_low_for_a_while(self):
+        """聊完不是马上又涨回去：聊得越多，缓得越久（按削掉的量算，不是固定 20 分钟）。"""
+        self.idle_hours(8)
+        lines = ["今天忙完了，跟你说个事",
+                 "下午那个会开得我头都大了，一直拖到六点",
+                 "你呢，今天有没有好好吃饭？",
+                 "晚上要不要一起看点什么？"]
+        for i, line in enumerate(lines):
+            self.core.observe(text=line, speaker="other", at=T0 + i * 30)
+        low = self.longing(T0 + 5 * 60)
+        self.assertGreater(self.longing(T0 + 60 * 60), low - 2.0)   # 一小时里没怎么涨
+        self.assertGreater(self.longing(T0 + 8 * H), low + 10)      # 久了才慢慢回来
+
+    def test_comfort_fades_and_longing_returns(self):
+        self.idle_hours(8)
+        before = self.longing(T0)
+        for i, line in enumerate(["在呢在呢", "刚忙完，抱抱"]):
+            self.core.observe(text=line, speaker="other", at=T0 + i * 20)
+        low = self.longing(T0 + 40)
+        later = self.longing(T0 + 8 * H)             # 缓过来了，想念又上来
+        self.assertLess(low, before)
+        self.assertGreater(later, low + 5)
 
     def test_hold_is_configurable(self):
         self.core.needs.hold_min = 10

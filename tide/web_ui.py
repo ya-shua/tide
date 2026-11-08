@@ -13,16 +13,16 @@ HTML = r"""<!doctype html>
 <title>Tide</title>
 <style>
   :root{
-    --bg:#121115;
-    --card:#1a181d;
-    --card2:#211e25;
-    --line:#2b262e;
-    --line-soft:#232028;
-    --fg:#ece8ee;
-    --dim:#a49daa;
-    --faint:#746d79;
-    --accent:#cf9db0;       /* 只用在一两处：当前最要紧的地方 */
-    --steel:#9db2c6;        /* 数字、次要强调 */
+    --bg:#0b0910;
+    --card:#161320;
+    --card2:#1f1a2c;
+    --line:#3a3249;
+    --line-soft:#271f36;
+    --fg:#f4f0fa;
+    --dim:#b7adc6;
+    --faint:#7f7590;
+    --accent:#ec7fa4;       /* 只用在一两处：当前最要紧的地方 */
+    --steel:#86b3dc;        /* 数字、次要强调 */
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--fg);
@@ -33,29 +33,30 @@ HTML = r"""<!doctype html>
 
   /* ── 每块自己的色调（不抢强调色，只是不再一片灰） ── */
   .card{position:relative;transition:border-color .18s, box-shadow .18s;
-    border-color:color-mix(in srgb,var(--tone,#2b262e) 30%,var(--line))}
-  .card:hover{border-color:color-mix(in srgb,var(--tone,#3a333f) 42%,var(--line))}
+    border-color:color-mix(in srgb,var(--tone,#3a3249) 46%,var(--line))}
+  .card:hover{border-color:color-mix(in srgb,var(--tone,#4a3f5c) 62%,var(--line))}
   .card::before{content:"";position:absolute;left:14px;top:-1px;width:34px;height:2px;
-    background:var(--tone,#4a4450);opacity:.9;border-radius:0 0 3px 3px}
+    background:var(--tone,#4a4450);opacity:1;border-radius:0 0 3px 3px}
   @supports (background:color-mix(in srgb,red 6%,black)){
     .card{background:linear-gradient(158deg,
-      color-mix(in srgb,var(--tone,#4a4450) 19%,var(--card)) 0%,
-      color-mix(in srgb,var(--tone,#4a4450) 7%,var(--card)) 46%,
+      color-mix(in srgb,var(--tone,#4a4450) 30%,var(--card)) 0%,
+      color-mix(in srgb,var(--tone,#4a4450) 12%,var(--card)) 46%,
       var(--card) 78%)}
   }
   .hd h2::before,.m .lb::before{content:"";display:inline-block;width:6px;height:6px;
     border-radius:99px;background:var(--tone,#6b6472);margin-right:8px;
-    vertical-align:1px;opacity:.95}
-  .hd h2,.m .lb{color:color-mix(in srgb,var(--tone,#746d79) 42%,var(--faint))}
-  .m .lb{color:color-mix(in srgb,var(--tone,#746d79) 48%,var(--faint))}
-  .tl h2,.dbg h2,.needs h2{color:color-mix(in srgb,var(--tone,#746d79) 45%,var(--faint))}
-  .now{--tone:#cf9db0}
-  .needs{--tone:#8fb4d6}
-  #rel-card{--tone:#d3a97b}
-  #emo-card{--tone:#b1a2d6}
-  #act-card{--tone:#7cc0b6}
-  .tl{--tone:#a89ed0}
-  .dbg{--tone:#8b93a4}
+    vertical-align:1px;opacity:1}
+  .hd h2,.m .lb{color:color-mix(in srgb,var(--tone,#746d79) 58%,var(--faint))}
+  .m .lb{color:color-mix(in srgb,var(--tone,#746d79) 62%,var(--faint))}
+  .tl h2,.dbg h2,.needs h2{color:color-mix(in srgb,var(--tone,#746d79) 60%,var(--faint))}
+  .now{--tone:#ec7fa4}
+  .needs{--tone:#5ea8e0}
+  #rel-card{--tone:#e2a05c}
+  #emo-card{--tone:#9b7cf0}
+  #act-card{--tone:#3fbfae}
+  #sleep-card{--tone:#6d8bf0}
+  .tl{--tone:#8d7bf0}
+  .dbg{--tone:#6f7d92}
 
   /* ── 顶栏 ── */
   .top{display:flex;align-items:baseline;gap:10px;margin-bottom:18px}
@@ -66,6 +67,9 @@ HTML = r"""<!doctype html>
   .chip{background:none;border:1px solid var(--line);color:var(--dim);
     border-radius:7px;padding:3px 9px;font:inherit;font-size:12px;cursor:pointer}
   .chip:hover{color:var(--fg);border-color:#313943}
+  select.pm{appearance:none;padding-right:7px;max-width:190px;color:var(--fg);
+    background:var(--card,#171a20)}
+  select.pm:focus{outline:none;border-color:var(--accent)}
   .top .ver{color:var(--faint);font:11px/1 ui-monospace,Consolas,monospace;opacity:.75}
   .chip.upd{background:var(--accent);border-color:var(--accent);color:#20161a;
     font-weight:600;letter-spacing:.01em;padding:5px 12px;
@@ -114,6 +118,23 @@ HTML = r"""<!doctype html>
   .meter i{display:block;height:100%;background:var(--tone,#9db2c6);border-radius:99px;opacity:.9}
   .act.on .meter i{background:var(--accent)}
 
+  /* ── ①½ 睡觉 ── */
+  .sleep{padding:15px 18px 13px}
+  .sleep .lb{font-size:11px;letter-spacing:.14em;color:var(--faint);
+    display:flex;align-items:baseline;gap:10px;margin-bottom:6px}
+  .sleep .lb .why{letter-spacing:0;color:var(--faint);opacity:.95;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sleep .row{display:flex;align-items:flex-end;gap:16px}
+  .sleep .at{font-size:26px;font-weight:650;line-height:1.15;color:#dfe6ff;
+    font-variant-numeric:tabular-nums;white-space:nowrap}
+  .sleep .at .ap{font-size:12.5px;font-weight:500;color:var(--dim);margin-left:6px}
+  .sleep .meta{font-size:12.5px;color:var(--dim);line-height:1.7;padding-bottom:4px}
+  .sleep .meta b{color:var(--fg);font-weight:600}
+  .sleep .meter{margin-top:10px;background:#241f31}
+  .sleep .meter i{background:var(--tone)}
+  .sleep.woken .at{color:var(--accent)}
+  .sleep.woken .meter i{background:var(--accent)}
+
   /* ── ③ 五条需求 ── */
   .needs{padding:15px 18px 12px;display:flex;flex-direction:column;flex:1}
   .needs #needs{flex:1;display:flex;flex-direction:column;justify-content:space-between;
@@ -161,31 +182,43 @@ HTML = r"""<!doctype html>
   .axis .nowp{color:var(--fg);background:var(--card2);border:1px solid var(--line);
     border-radius:99px;padding:0 9px;font-size:11px}
 
-/* ── 设置抽屉 ── */
+/* ── 设置：整页，不是小抽屉 ── */
   .scrim{position:fixed;inset:0;background:rgba(6,8,11,.66);opacity:0;pointer-events:none;
     transition:opacity .2s;z-index:40}
   .scrim.on{opacity:1;pointer-events:auto}
-  .drawer{position:fixed;top:0;right:0;bottom:0;width:372px;max-width:92vw;z-index:41;
-    background:#13171c;border-left:1px solid var(--line);
-    transform:translateX(102%);transition:transform .24s ease;display:flex;flex-direction:column}
-  .drawer.on{transform:none}
-  .drawer .dh{display:flex;align-items:center;gap:10px;padding:16px 18px;
+  .sheet{position:fixed;inset:0;z-index:41;background:var(--bg,#0f1216);
+    display:flex;flex-direction:column;opacity:0;pointer-events:none;
+    transform:translateY(8px);transition:opacity .18s ease,transform .18s ease}
+  .sheet.on{opacity:1;pointer-events:auto;transform:none}
+  .sheet .dh{display:flex;align-items:baseline;gap:14px;padding:22px 34px 15px;
+    border-bottom:1px solid var(--line-soft);width:100%;max-width:1180px;margin:0 auto}
+  .sheet .dh h3{font-size:19px;font-weight:600;letter-spacing:.01em}
+  .sheet .dh .sub{font-size:12.5px;color:var(--faint)}
+  .sheet .dh .grow{flex:1}
+  .sheet .db{flex:1;overflow:auto;padding:22px 34px 34px;width:100%;max-width:1180px;
+    margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));
+    gap:14px;align-content:start}
+  .sheet .df{display:flex;align-items:center;gap:12px;padding:14px 34px;
+    border-top:1px solid var(--line-soft);background:var(--card);
+    width:100%;max-width:1180px;margin:0 auto}
+  .sheet .df .msg{font-size:12.5px;color:var(--faint);flex:1}
+  .s-grp{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:4px 16px 12px}
+  .s-grp h4{font-size:11.5px;letter-spacing:.12em;color:var(--faint);font-weight:500;
+    margin:14px 0 4px}
+  .s-grp .hint{font-size:11.5px;color:var(--faint);line-height:1.55;margin:0 0 8px}
+  .s-row{display:flex;align-items:center;gap:12px;padding:8px 0;
     border-bottom:1px solid var(--line-soft)}
-  .drawer .dh h3{font-size:14px;font-weight:600}
-  .drawer .dh .grow{flex:1}
-  .drawer .db{flex:1;overflow:auto;padding:4px 18px 18px}
-  .drawer .df{padding:13px 18px;border-top:1px solid var(--line-soft);
-    display:flex;align-items:center;gap:12px}
-  .drawer .df .msg{font-size:12.5px;color:var(--faint);flex:1}
-  .s-grp{padding-top:15px}
-  .s-grp h4{font-size:11px;letter-spacing:.14em;color:var(--faint);font-weight:500;margin-bottom:7px}
-  .s-row{display:flex;align-items:center;gap:12px;padding:6px 0;border-bottom:1px solid var(--line-soft)}
   .s-row:last-child{border-bottom:0}
-  .s-row span{flex:1;font-size:12.5px;color:var(--dim);line-height:1.45}
-  .s-row input{width:104px;flex:none;background:var(--card2);color:var(--fg);
-    border:1px solid var(--line);border-radius:7px;padding:4px 8px;font:inherit;
-    font-size:12.5px;text-align:right}
+  .s-row span{flex:1;font-size:13px;color:var(--dim);line-height:1.5}
+  .s-row input{width:122px;flex:none;background:var(--card2);color:var(--fg);
+    border:1px solid var(--line);border-radius:7px;padding:7px 9px;font:inherit;
+    font-size:13px;text-align:right}
   .s-row input:focus{outline:none;border-color:#3a4553}
+  @media (max-width:700px){
+    .sheet .dh,.sheet .db,.sheet .df{padding-left:18px;padding-right:18px}
+    .sheet .db{grid-template-columns:1fr}
+  }
   .btn{background:var(--card2);color:var(--dim);border:1px solid var(--line);
     border-radius:7px;padding:6px 13px;font:inherit;font-size:12.5px;cursor:pointer}
   .btn:hover{color:var(--fg);border-color:#313943}
@@ -258,6 +291,7 @@ HTML = r"""<!doctype html>
     <h1>Tide</h1><span class="sub" id="tabname">此刻</span><span class="ver" id="ver"></span>
     <div class="grow"></div>
     <span class="clock" id="clock">—</span>
+    <select class="chip pm" id="pm" title="看谁的线"></select>
     <button class="chip upd" id="upd" style="display:none"></button>
     <button class="chip" id="refresh">刷新</button>
     <button class="chip" id="gear">设置</button>
@@ -280,6 +314,15 @@ HTML = r"""<!doctype html>
         <span class="sl">心里在想</span>
         <span class="txt" id="say">—</span>
       </div>
+    </section>
+
+    <section class="card sleep" id="sleep-card">
+      <div class="lb"><span>睡觉</span><span class="why" id="sleep-why"></span></div>
+      <div class="row">
+        <div class="at" id="sleep-at">—</div>
+        <div class="meta" id="sleep-meta"></div>
+      </div>
+      <div class="meter"><i id="sleep-bar" style="width:0%"></i></div>
     </section>
 
     <section class="card needs">
@@ -364,9 +407,11 @@ HTML = r"""<!doctype html>
   </div>
 
   <div class="scrim" id="scrim"></div>
-  <aside class="drawer" id="drawer">
+  <section class="sheet" id="drawer">
     <div class="dh">
-      <h3>设置</h3><span class="grow"></span>
+      <h3>设置</h3>
+      <span class="sub">改完点保存立刻生效，不用重启</span>
+      <span class="grow"></span>
       <button class="btn ghost" id="s-close">关闭</button>
     </div>
     <div class="db" id="s-body"></div>
@@ -374,7 +419,7 @@ HTML = r"""<!doctype html>
       <span class="msg" id="s-msg"></span>
       <button class="btn primary" id="s-save">保存</button>
     </div>
-  </aside>
+  </section>
 
 </div>
 
@@ -398,9 +443,12 @@ function tagName(t){
   return t;
 }
 
-async function load(){ const r=await fetch('/api/state'); data=await r.json(); render(); maybeProbe(); }
+let CUR=new URLSearchParams(location.search).get('person')||'';
+async function load(){ const r=await fetch('/api/state'+(CUR?'?person='+encodeURIComponent(CUR):'')); data=await r.json(); render(); maybeProbe(); }
 async function post(path,body){
-  const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+  const b=Object.assign({},body||{});
+  if(CUR && b.person===undefined) b.person=CUR;
+  const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
   data=await r.json(); render();
 }
 el('refresh').onclick=load;
@@ -517,15 +565,74 @@ function innerVoice(s){
   return '没什么事，就这么待着也挺好。';
 }
 
+/* 睡觉：几点睡、睡多久、还有多久 */
+function renderSleep(s){
+  const ck=s.clock||{};
+  const at=el('sleep-at'), meta=el('sleep-meta'), why=el('sleep-why'), bar=el('sleep-bar');
+  el('sleep-card').classList.toggle('woken', !!ck.woken);
+  why.textContent=ck.woken?('刚被吵醒 · '+(ck.why||'')):(ck.why||'');
+  if(ck.asleep){
+    const plan=ck.plan_hours||ck.sleep_hours||7;
+    at.innerHTML=(ck.is_nap?'眯着':'正在睡')+'<span class="ap">'+(ck.is_nap?'午觉':'')+'</span>';
+    meta.innerHTML='已睡 <b>'+fmt(ck.slept_h)+'</b> 小时 · 打算睡 <b>'+plan+'</b>';
+    bar.style.width=Math.min(100,((ck.slept_h||0)/plan)*100)+'%';
+    return;
+  }
+  const dt=s.now?new Date(s.now):new Date();
+  const h=dt.getHours()+dt.getMinutes()/60;
+  const onset=ck.onset_hour!=null?ck.onset_hour:23.5;
+  let left=onset-h;
+  if(left<-1) left+=24;               // 已经过了点，算到明天
+  at.innerHTML=(ck.onset_text||'—')+'<span class="ap">睡</span>';
+  if(left<=0){
+    meta.innerHTML='到点了 · 打算睡 <b>'+(ck.sleep_hours||7)+'</b> 小时';
+    bar.style.width='100%';
+  }else{
+    const t=left>=1?(left.toFixed(1).replace(/\.0$/,'')+' 小时后'):(Math.round(left*60)+' 分钟后');
+    meta.innerHTML='<b>'+t+'</b> · 打算睡 <b>'+(ck.sleep_hours||7)+'</b> 小时';
+    bar.style.width=Math.max(0,Math.min(100,((4-Math.min(left,4))/4)*100))+'%';
+  }
+}
+
+function paintPersons(s){
+  const sel=el('pm'), list=(s&&s.persons)||[];
+  const cur=(s&&s.person)||CUR||'';
+  const key=list.map(p=>p.id+'|'+p.label).join(',');
+  if(sel.dataset.key!==key){
+    sel.dataset.key=key;
+    sel.textContent='';
+    list.forEach(p=>{
+      const o=document.createElement('option');
+      o.value=p.id;
+      const bits=[p.label];
+      if(p.idle_min!=null) bits.push(fmtT(p.idle_min)+'前');
+      if(p.tier_name) bits.push(p.tier_name);
+      o.textContent=bits.join(' · ');
+      sel.appendChild(o);
+    });
+  }
+  if(cur) sel.value=cur;
+  sel.onchange=()=>{
+    const v=sel.value;
+    const u=new URL(location.href);
+    if(v && v!==(s.person||'')) u.searchParams.set('person',v); else u.searchParams.delete('person');
+    CUR=v; history.replaceState(null,'',u.toString()); load();
+  };
+}
+
 function render(){
   if(!data) return;
   const s=data.snapshot, plan=data.plan, b=s.bond, n=s.needs, series=data.series||[];
+  paintPersons(s);
   const lv={};
   (s.emotion.breakdown||[]).forEach(it=>{lv[it.label]=(it.value||0)/100;});
   const p2=v=>String(v).padStart(2,'0');
   const dt=s.now?new Date(s.now):null;
+  const ck0=s.clock||{};
   el('clock').textContent=(dt?(dt.getMonth()+1)+'月'+p2(dt.getDate())+'日 '+p2(dt.getHours())+':'+p2(dt.getMinutes()):'—')
-    +((s.clock&&s.clock.asleep)?' · 睡着中':(s.quiet?' · 勿扰中':''));
+    +(ck0.asleep?' · 睡着中':(s.quiet?' · 勿扰中':(ck0.onset_text?' · 打算 '+ck0.onset_text+' 睡':'')));
+  if(ck0.why) el('clock').title='睡眠：'+ck0.why+'（睡 '+ck0.sleep_hours+' 小时）';
+  renderSleep(s);
 
   const talk=(s.memory&&s.memory.talk)||{};
   el('idle').textContent=(talk.phrase&&talk.phrase!=='还没说过话')?('· '+talk.phrase):'';
@@ -787,11 +894,25 @@ async function openSettings(){
 function closeSettings(){
   scrim.classList.remove('on'); drawer.classList.remove('on'); smsg.textContent='';
 }
+const GROUP_HINT={
+  角色:'她叫什么、怎么称呼你。',
+  脾气:'委屈到多少算哪一档，以及大生气要冷静多久。',
+  节奏:'安静时段里的冷落打折；睡眠时间不是写死的——累和情绪都会让它前后挪。',
+  作息:'几点睡由"当天有多累 + 心里装着什么"推算：累得早，担心/难过/生气会往后拖，睡多久也跟着变。',
+  主动:'她什么时候会想找你：阈值、冷却、一天最多几次、被晾着时委屈涨多快。',
+  记忆:'记原话保留多久。',
+  面板:'面板自己怎么刷、去哪查更新。',
+};
 function renderSettings(){
   const groups={};
   (SCFG.fields||[]).forEach(f=>{(groups[f.group]=groups[f.group]||[]).push(f);});
-  sbody.innerHTML=Object.keys(groups).map(g=>
-    '<div class="s-grp"><h4>'+g+'</h4>'+groups[g].map(f=>{
+  const order=Object.keys(groups).sort((a,b)=>{
+    const ia=Object.keys(GROUP_HINT).indexOf(a), ib=Object.keys(GROUP_HINT).indexOf(b);
+    return (ia<0?99:ia)-(ib<0?99:ib);
+  });
+  sbody.innerHTML=order.map(g=>{
+    const hint=GROUP_HINT[g]?'<p class="hint">'+GROUP_HINT[g]+'</p>':'';
+    return '<div class="s-grp"><h4>'+g+'</h4>'+hint+groups[g].map(f=>{
       const v=SCFG.values[f.key];
       let input;
       if(f.kind==='num'){
@@ -805,7 +926,8 @@ function renderSettings(){
       }
       return '<label class="s-row"><span>'+f.label
         +(f.unit?'（'+f.unit+'）':'')+'</span>'+input+'</label>';
-    }).join('')+'</div>').join('');
+    }).join('')+'</div>';
+  }).join('');
 }
 async function saveSettings(){
   const patch={};

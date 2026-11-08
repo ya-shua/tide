@@ -43,9 +43,10 @@ class Needs:
         self.affinity_boost = float(cfg.get("longing_affinity_boost", 0.8))
         # 表达缓解：她开口之后，想念暂停上涨这么久（分钟）
         self.hold_min = float(cfg.get("hold_min", 120.0))
-        # 你回复时留的余温：想念不会瞬间归零
-        self.residual = float(cfg.get("longing_residual", 12.0))
-        self.residual_min = float(cfg.get("residual_min", 20.0))
+        # 想念是个存量：自己慢慢涨，被回应按"这句有多实"往下削，
+        # 削完还会接着涨——不会因为你回了个"嗯"就不想你了。
+        self.longing_value = 0.0
+        self.longing_at = 0.0
 
         self.hunger = float(cfg.get("init_hunger", 10))
         self.thirst = float(cfg.get("init_thirst", 12))
@@ -112,32 +113,52 @@ class Needs:
                     done.append(rule["note"])
         return done
 
+    def _tau(self, affinity: float) -> float:
+        return self.tau_hours * max(0.3, 1.4 - self.affinity_boost * (affinity / 100.0))
+
+    def _value_at(self, now: float, affinity: float) -> float:
+        """现在的想念：缓解期里冻结，缓解期结束从冻结值接着涨。"""
+        if self.hold_until:
+            if now < self.hold_until:
+                return self.hold_value
+            hours = max(0.0, (now - self.hold_until) / 3600.0)
+            return 100.0 - (100.0 - self.hold_value) * math.exp(-hours / self._tau(affinity))
+        anchor = self.longing_at or self.last_seen
+        if not anchor:
+            return self.longing_value
+        hours = max(0.0, (now - anchor) / 3600.0)
+        return 100.0 - (100.0 - self.longing_value) * math.exp(-hours / self._tau(affinity))
+
     def longing(self, now: float, affinity: float) -> float:
-        # 缓解期里冻结：她说出来了，就不继续涨；过了这段时间再涨回去
-        if self.hold_until and now < self.hold_until:
-            return round(_clamp(self.hold_value), 1)
-        if not self.last_seen:
-            return 0.0
-        idle_hours = max(0.0, (now - self.last_seen) / 3600.0)
-        tau = self.tau_hours * max(0.3, 1.4 - self.affinity_boost * (affinity / 100.0))
-        return round(_clamp(100.0 * (1 - math.exp(-idle_hours / tau))), 1)
+        return round(_clamp(self._value_at(now, affinity)), 1)
 
     def spoke(self, now: float, affinity: float) -> None:
         """她主动开口了：想念不降，但从现在起暂停上涨（缓解期）。"""
-        self.hold_value = self.longing(now, affinity)
+        self.longing_value = self._value_at(now, affinity)
+        self.longing_at = now
+        self.hold_value = _clamp(self.longing_value)
         self.hold_until = now + self.hold_min * 60.0
 
-    def touched(self, now: float, affinity: float = 0.0, residual: float | None = None) -> None:
-        """你说话了：想念降下来，但留一点余温，不会瞬间归零。"""
+    def touched(self, now: float, affinity: float = 0.0, quality: float = 0.06) -> None:
+        """你回了一句：按这句有多"实"削一点；没聊够的，剩下的会自己涨回来。
+
+        敷衍一句（"嗯"）只削几个点，真聊一场才削得多。
+        """
+        cur = self._value_at(now, affinity)
+        cut = min(cur * 0.6, max(0.06, quality) * 70.0)
+        self.longing_value = _clamp(cur - cut)
+        self.longing_at = now
         self.last_seen = now
         self.boredom = _clamp(self.boredom - 25.0)
-        left = self.residual if residual is None else float(residual)
-        if left > 0.1 and self.residual_min > 0:
-            self.hold_value = _clamp(left)
-            self.hold_until = now + self.residual_min * 60.0
+        # 刚聊完有个"缓一缓"：聊得越多，缓得越久（不是固定时长）
+        grace_min = min(240.0, cut * 6.0)
+        if grace_min >= 1.0:
+            self.hold_value = self.longing_value
+            self.hold_until = now + grace_min * 60.0
         else:
             self.hold_until = 0.0
             self.hold_value = 0.0
+        return round(cur - self.longing_value, 1)
 
     def apply(self, deltas: dict) -> None:
         for key, val in (deltas or {}).items():
@@ -169,6 +190,8 @@ class Needs:
             "last_seen": self.last_seen,
             "hold_until": self.hold_until,
             "hold_value": self.hold_value,
+            "longing_value": self.longing_value,
+            "longing_at": self.longing_at,
         }
 
     def load(self, data: dict) -> None:
@@ -180,6 +203,14 @@ class Needs:
         self.last_seen = float(data.get("last_seen", 0.0))
         self.hold_until = float(data.get("hold_until", 0.0))
         self.hold_value = float(data.get("hold_value", 0.0))
+        self.longing_value = float(data.get("longing_value", 0.0))
+        self.longing_at = float(data.get("longing_at", 0.0))
+        # 旧状态没有存量：用"距上次互动多久"补一个起点，别让她一觉醒来归零
+        if not self.longing_at and self.last_seen:
+            self.longing_at = self.last_seen
+            self.longing_value = 0.0
+        self.comfort = float(data.get("comfort", 0.0))
+        self.comfort_at = float(data.get("comfort_at", 0.0))
 
 
 def _clamp(v: float, lo: float = 0.0, hi: float = 100.0) -> float:

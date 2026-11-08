@@ -162,10 +162,16 @@ class Memory:
             "by": "you" if item.get("tag") in TAG_VERB else "her",
         }
 
-    def digest(self, now: float, limit: int = 3) -> list:
-        """面板用：她这会儿记得的几件事，最新的在前。"""
+    def digest(self, now: float, limit: int = 3, person=None) -> list:
+        """面板用：她这会儿记得的几件事，最新的在前。
+
+        person 给了就只看这条线上的（主人 / 某个群各算各的），
+        没记过人的（全局事件）两边都算。不给就混着看。
+        """
         useful = [it for it in self.items
                   if it.get("tag") in TAG_VERB or it.get("kind") == "event"]
+        if person is not None:
+            useful = [it for it in useful if it.get("person") in (None, person)]
         items = sorted(useful, key=lambda x: x["at"], reverse=True)
         return [self.describe(it, now) for it in items[:limit]]
 

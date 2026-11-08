@@ -22,6 +22,63 @@ import tempfile
 from pathlib import Path
 
 from . import appraisal as app_mod
+
+
+def _person_label(pid: str) -> str:
+    """面板/提示词里给人看的名字（id 本身是稳定键，别拿它当名字）。"""
+    pid = str(pid or "")
+    if pid.startswith("group:"):
+        return "群 " + pid.split(":", 1)[1]
+    if pid.startswith("qq:"):
+        return "QQ " + pid.split(":", 1)[1]
+    return pid
+
+
+# 情绪的小标签 → 七情里的哪一情（提示词里说人话用）
+_MOOD_FAMILY = {
+    "joy": "开心", "anger": "生气", "worry": "担心", "longing": "想你",
+    "sorrow": "难过", "fear": "怕", "surprise": "意外", "calm": "平静",
+}
+
+
+def _tone_line(affinity: float, family: str, intensity: float = 0.0) -> str:
+    """好感 × 心情 → 一句「说话的分寸」。
+
+    好感是底盘（这个人值不值得客气），心情是当天的脾气。同样的气，对着好感高的
+    人她会压着，对着好感低的人就直接炸；同样是高兴，熟的人面前才黏。
+    """
+    near = affinity >= 70
+    far = affinity < 35
+    strong = intensity >= 0.5
+
+    if family == "anger":
+        if far:
+            return "说话的分寸：火已经上来了，对他也没什么好气——可以冲，话要短，别哄。"
+        if near:
+            return "说话的分寸：在生气，但跟他关系近——压着火说，别撂狠话。"
+        return "说话的分寸：在生气，克制着说，别翻旧账。"
+
+    if family == "joy":
+        if near:
+            return "说话的分寸：心情好，也喜欢他——可以黏一点、多说两句。" if strong else "说话的分寸：心情不错，跟他亲近——放松点说。"
+        if far:
+            return "说话的分寸：心情不错，但跟他关系一般——客气点，不必热络。"
+        return "说话的分寸：心情不错，正常说就行。"
+
+    if family in ("sorrow", "worry", "fear"):
+        what = {"sorrow": "难过", "worry": "担心", "fear": "有点怕"}[family]
+        if near:
+            return f"说话的分寸：心里{what}，他是能说的人——可以露一点，别演。"
+        if far:
+            return f"说话的分寸：心里{what}，跟他没那么熟——收着点，别倒苦水。"
+        return f"说话的分寸：心里{what}，正常说，别硬撑也别夸张。"
+
+    if family == "longing":
+        if near:
+            return "说话的分寸：想他了——可以直接说想，别绕。"
+        return "说话的分寸：有点想聊，但跟他没那么熟——正常说，别提想念。"
+
+    return "说话的分寸：心里平静，正常说话就行。"
 from . import bond as bond_mod
 from . import emotion as emo_mod
 from . import circadian as clock_mod
@@ -182,6 +239,20 @@ class TideCore:
         pro["max_unanswered"] = st["proactive_max_unanswered"]
         self.rules["proactive"] = pro
         self.memory.quote_ttl_h = st["memory_quote_hours"]
+        # 作息：几点睡、睡多久，跟累和情绪走
+        def _hm(text):
+            h, m = str(text).split(":")
+            return int(h) + int(m) / 60.0
+        clock = self.clock.cfg
+        clock["normal_onset"] = _hm(st["sleep_normal"])
+        clock["earliest_onset"] = _hm(st["sleep_earliest"])
+        latest = _hm(st["sleep_latest"])
+        if latest < clock["earliest_onset"]:
+            latest += 24.0          # 02:00 这种跨零点的写法
+        clock["latest_onset"] = latest
+        clock["min_hours"] = float(st["sleep_min_h"])
+        clock["max_hours"] = float(st["sleep_max_h"])
+        clock["mood_delay_max"] = float(st["sleep_mood_delay"])
         # 面板上的"主动"那组：直接改叫醒条件，不用重启
         for key, field in (("longing", "wake_longing"), ("boredom", "wake_boredom"),
                            ("worried", "wake_worried"),
@@ -322,7 +393,8 @@ class TideCore:
             asleep = self.clock.asleep
             quiet_chunk = self.is_quiet(ts) or asleep
             self.needs.advance(chunk, quiet_chunk, asleep=asleep, recover_per_hour=recover)
-            for kind, val in self.clock.step(chunk, ts, self.needs.energy):
+            for kind, val in self.clock.step(chunk, ts, self.needs.energy,
+                                             self.emotion.levels):
                 self._on_sleep_event(kind, val, ts)
             for pid in list(self.topics.keys()):
                 topic = self.topics[pid]
@@ -371,6 +443,26 @@ class TideCore:
             return
         self._apply_bond(self._bond(self.default_person),
                          {"grievance": add}, ["dnd:" + self.dnd], t)
+
+    def _reply_quality(self, text: str, res) -> float:
+        """你这一句有多"实"：长句、有来有回、有关心，才算真聊上了。
+
+        回一句"嗯"只算 0.06，聊开了单句能到 0.2~0.3。
+        """
+        body = (text or "").strip()
+        q = 0.06
+        n = len(body)
+        if n >= 10:
+            q += 0.04
+        if n >= 30:
+            q += 0.06
+        if n >= 60:
+            q += 0.06
+        if "？" in body or "?" in body:
+            q += 0.04
+        if "care" in (getattr(res, "tags", None) or []):
+            q += 0.08
+        return round(min(0.30, q), 3)
 
     # ---------- 输入 ----------
     def observe(self, text=None, speaker="other", person=None, at=None,
@@ -424,8 +516,13 @@ class TideCore:
                     res.bond.pop("grievance", None)
             self._apply_bond(bond, res.bond, res.tags, t)
             self.needs.apply(res.needs)
-            # 你终于回了：想念降下来但留余温；被晾着的委屈这时候才炸
-            self.needs.touched(t, bond.affinity)
+            # 你终于回了：按这句有多"实"降想念；聊不够的，剩下的会自己涨回来
+            quality = self._reply_quality(text or "", res)
+            cut = self.needs.touched(t, bond.affinity, quality)
+            if quality >= 0.12:
+                # 被认真回应 → 亲近感上来（想念不是消失，是变成了踏实）
+                self.emotion.add("affectionate", round(0.05 + quality * 0.3, 3))
+                self.emotion.add("joyful", round(quality * 0.25, 3))
             late = min(50.0, 6.0 * idle_h) if (waiting and idle_h >= 0.5) else 0.0
             if late > 0:
                 self._apply_bond(bond, {"grievance": late}, ["replied_late"], t)
@@ -443,6 +540,8 @@ class TideCore:
                     "directed": res.directed,
                     "idle_h": round(idle_h, 2),
                     "was_dnd": was_dnd,
+                    "quality": quality,
+                    "longing_drop": cut,
                     "deltas": {
                         "emotion": {k: round(v, 3) for k, v in res.emotion.items()},
                         "bond": {k: round(v, 2) for k, v in res.bond.items()},
@@ -590,7 +689,8 @@ class TideCore:
             self.is_quiet(t), self.unanswered_proactive, self.last_proactive_at, t)
         if not prox.get("should_send"):
             return None
-        scene = say_mod.pick_scene(needs, bond, clock=self.clock.state(t))
+        scene = say_mod.pick_scene(needs, bond, clock=self.clock.state(
+            t, self.needs.energy, self.emotion.levels))
         said = len([x for x in self.log if x.get("kind") == "proactive"])
         return {"at": t, "text": say_mod.compose(scene, said), "scene": scene,
                 "urgency": prox.get("urgency"), "reason": prox.get("reason")}
@@ -652,7 +752,7 @@ class TideCore:
                 "idle_min": idle_min,
                 "neglect": round(topic.neglect(t, bond.affinity, self.is_quiet(t)), 1),
             },
-            "clock": self.clock.state(t),
+            "clock": self.clock.state(t, self.needs.energy, self.emotion.levels),
             "just_woken": self.just_woken,
             "media": self.last_media,
             "auto": {
@@ -662,14 +762,35 @@ class TideCore:
             },
             "log": self.log[-8:],
             "memory": self._memory_view(pid, t, idle_min),
+            "persons": self._person_list(t, pid),
             "settings": dict(self.settings.data),
         }
+
+    def _person_list(self, t: float, active: str) -> list:
+        """面板上能切的人/群：有关系的都列出来。"""
+        out = []
+        for pid in self.bonds:
+            bond = self.bonds[pid]
+            topic = self.topics.get(pid)
+            last = float(getattr(topic, "last_msg_at", 0.0) or 0.0)
+            label = _person_label(pid)
+            out.append({
+                "id": pid,
+                "label": label,
+                "affinity": round(float(getattr(bond, "affinity", 0.0)), 1),
+                "tier_name": str(getattr(bond, "tier_name", "") or ""),
+                "topic": str(getattr(topic, "state", "") or ""),
+                "idle_min": (round((t - last) / 60.0, 1) if last else None),
+            })
+        # 正在看的排最前，其余按「刚说过话」排
+        out.sort(key=lambda x: (x["id"] != active, x["idle_min"] is None, x["idle_min"] or 0.0))
+        return out
 
     def _memory_view(self, pid: str, t: float, idle_min) -> dict:
         neg = self.memory.last(t, tags=["hostile", "dismissive", "apology"], person=pid)
         pos = self.memory.last(t, tags=["praise", "care", "tease", "feeding"], person=pid)
         return {
-            "digest": self.memory.digest(t, limit=3),
+            "digest": self.memory.digest(t, limit=3, person=pid),
             "last_neg": self.memory.describe(neg, t) if neg else None,
             "last_pos": self.memory.describe(pos, t) if pos else None,
             "talk": {"idle_min": idle_min, "phrase": mem_mod.phrase_idle(idle_min)},
@@ -683,7 +804,7 @@ class TideCore:
         "yearning": "想他", "scared": "害怕", "guilty": "心虚",
         "shy": "害羞", "proud": "得意", "joyful": "开心", "excited": "兴奋",
         "playful": "想闹", "grateful": "感动", "hopeful": "期待",
-        "surprised": "意外", "embarrassed": "尴尬", "tired": "累", "bored": "没劲",
+        "surprised": "意外", "embarrassed": "尴尬", "tired": "累", "bored": "没劲", "affectionate": "想亲近他",
     }
 
     def _feelings(self, t: float, pid: str) -> str:
@@ -752,6 +873,7 @@ class TideCore:
             f"关系：亲和 {bond.affinity:.0f}｜委屈 {bond.grievance:.0f}（{mood}"
             + (f"·{bond.hint(t)}" if bond.hint(t) else "")
             + "）\n"
+            + _tone_line(bond.affinity, *self.emotion.dominant()) + "\n"
             f"话题：{topic.state}｜{'在等你回答' if topic.her_last_asked else '没在等'}"
         )
 

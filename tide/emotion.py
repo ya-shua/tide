@@ -35,6 +35,7 @@ LABELS = {
     "proud":        ("joy",      (0.65, 0.65, 0.70), 60),
     "grateful":     ("joy",      (0.70, 0.45, 0.45), 300),
     "hopeful":      ("joy",      (0.50, 0.55, 0.55), 180),
+    "affectionate": ("joy",      (0.70, 0.35, 0.45), 720),
     # 怒
     "angry":        ("anger",    (-0.60, 0.80, 0.60), 25),
     "annoyed":      ("anger",    (-0.40, 0.55, 0.50), 40),
@@ -85,6 +86,7 @@ DEFAULT_TRANSFER = {
     "excited":      [("calm", 0.90), ("joyful", 0.10)],
     "playful":      [("calm", 1.0)],
     "grateful":     [("calm", 0.80), ("joyful", 0.20)],
+    "affectionate": [("calm", 0.85), ("grateful", 0.15)],
     "hopeful":      [("calm", 1.0)],
     "nostalgic":    [("calm", 0.80), ("sad", 0.20)],
     "yearning":     [("calm", 0.50), ("sad", 0.50)],
@@ -265,6 +267,30 @@ class Emotion:
     def intensity(self) -> float:
         top, v = self.top()
         return round(v if top != CALM else 0.0, 4)
+
+    @property
+    def family(self) -> str:
+        """决定语气的那一情（怒气压过一切：人在气头上，别的情绪都得让路）。"""
+        return self.dominant()[0]
+
+    def dominant(self) -> tuple:
+        """此刻哪个情绪说了算 —— 返回 (七情, 强度)。
+
+        光看"最强的那一情"不够：喜欢一个人喜欢久了（affectionate 半衰期 12 小时），
+        数值会一直很高，气头上也压不过它，说出来的分寸就成了"心情好"。
+        所以怒气单独先判：只要在气头上，语气就按怒气算。
+        """
+        anger = max(
+            self.levels.get("angry", 0.0),
+            self.levels.get("annoyed", 0.0),
+            self.levels.get("jealous", 0.0),
+        )
+        if anger >= self.calm_threshold:
+            return "anger", round(anger, 4)
+        top, v = self.top()
+        if v < self.calm_threshold or top == CALM:
+            return "calm", 0.0
+        return str((LABELS.get(top) or ("calm",))[0]), round(v, 4)
 
     def accounts(self) -> dict:
         """七情账户（0~100 整数），加起来 100。"""
