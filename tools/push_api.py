@@ -19,7 +19,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def git(*args: str) -> bytes:
-    out = subprocess.run(["git", *args], cwd=ROOT, capture_output=True)
+    # 文件名带中文时 git 默认输出带引号的转义路径，后续 ls-tree/show 就对不上
+    out = subprocess.run(["git", "-c", "core.quotePath=false", *args], cwd=ROOT, capture_output=True)
     if out.returncode != 0:
         raise RuntimeError(out.stderr.decode("utf-8", "replace").strip())
     return out.stdout
@@ -68,7 +69,11 @@ def push_one(base: str, token: str, sha: str, base_tree: str) -> str:
         if status == "D":
             entries.append({"path": path, "mode": "100644", "type": "blob", "sha": None})
             continue
-        mode = git_text("ls-tree", sha, "--", path).split()[0]
+        listed = git_text("ls-tree", sha, "--", path)
+        if not listed:      # 改名/删除的另一半：这个提交里已经没有它
+            entries.append({"path": path, "mode": "100644", "type": "blob", "sha": None})
+            continue
+        mode = listed.split()[0]
         blob = git("show", f"{sha}:{path}")
         created = api(f"{base}/git/blobs", token,
                       {"content": base64.b64encode(blob).decode(), "encoding": "base64"},
