@@ -9,3 +9,6 @@ _update/
 plugins/
 logs/
 config/privacy.local.txt
+config/角色.yaml
+_move-backup-*/
+config/*.local.yaml

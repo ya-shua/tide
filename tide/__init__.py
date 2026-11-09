@@ -10,6 +10,6 @@
     core.plan_reply()
 """
 from .core import TideCore
+from .version import __version__
 
 __all__ = ["TideCore"]
-__version__ = "0.1.0"
