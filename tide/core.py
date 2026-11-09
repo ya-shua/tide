@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import uuid
 from pathlib import Path
 
 from . import appraisal as app_mod
@@ -86,6 +87,7 @@ from . import updater as upd_mod
 from . import inner_voice, media as media_mod
 from .version import __version__
 from . import memory as mem_mod, qq as qq_mod, say as say_mod
+from . import bridge as bridge_mod
 from . import needs as needs_mod, settings as set_mod
 from . import timeutil, voice
 from . import topic as topic_mod
@@ -146,6 +148,16 @@ class TideCore:
         self.dnd = "off"                 # off / manual / auto
         self.wake_marks = []             # 今天叫醒过几次（时间戳）
         self.last_wake_at = 0.0
+
+        # 宿主桥：Tide 只判断「该不该找他」，真的开口交给宿主（海螺那套人设）。
+        # 没配宿主就退回自带的那张嘴（qq 通道 + wake.auto_send）。
+        hcfg = dict(self.rules.get("host") or {})
+        self.bridge = bridge_mod.HostBridge(hcfg)
+        self.panel_port = int(hcfg.get("panel_port") or 7880)
+        self.notify_wait_s = float(hcfg.get("wait_sec", 300))
+        self.notify_retry_min = float(hcfg.get("retry_min", 10))
+        self.pending_proactive = None    # 已经通知宿主、还在等回执
+        self.notify_fail_at = 0.0        # 上一次没送成的时间（退避用）
 
         emo_cfg = (self.cfg.get("emotion") or {})
         self.emotion = emo_mod.Emotion(
@@ -598,8 +610,106 @@ class TideCore:
     def tick(self, at=None) -> dict:
         t = float(at) if at is not None else self.now()
         self._advance(t)
+        self._maybe_notify_host(t)
         self.save()
         return self.snapshot(at=t)
+
+    # ---------- 把「我想找他说句话」交给宿主 ----------
+    def _report_url(self) -> str:
+        return f"http://127.0.0.1:{self.panel_port}/api/proactive-report"
+
+    def _maybe_notify_host(self, t: float) -> dict | None:
+        """跨过门槛的那一下通知宿主一次；发完就闭麦，等回执。
+
+        不是轮询式「到线就发」：pending 期间什么都不做，
+        等够 wait_sec 还没回执才算失败，退避 retry_min 分钟再试。
+        """
+        pending = self.pending_proactive or {}
+        if pending:
+            since = t - float(pending.get("at") or 0)
+            if since < self.notify_wait_s:
+                return None
+            # 宿主一直没回执：按失败算，别一直挂着
+            self.pending_proactive = None
+            self.notify_fail_at = t
+            self._log({"at": round(t, 3), "kind": "proactive_failed",
+                       "text": "宿主一直没回执", "person": self.default_person})
+
+        if self.notify_fail_at and (t - self.notify_fail_at) < self.notify_retry_min * 60:
+            return None
+
+        wake = self.should_wake(t)
+        if not wake.get("wake"):
+            return None
+
+        auto_send = bool(self.wake_cfg.get("auto_send"))
+        if not self.bridge.ready:
+            if auto_send:
+                return self.send_proactive(t)     # 没宿主：用自带的那张嘴
+            return None
+
+        needs = wake.get("needs") or {}
+        bond = self._bond(self.default_person).to_dict(t)
+        ev_id = f"t{int(t)}-{uuid.uuid4().hex[:6]}"
+        payload = {
+            "event_id": ev_id,
+            "why": str(wake.get("why") or ""),
+            "urgency": inner_voice.urgency(needs, bond),
+            "needs": needs,
+            "person": self.default_person,
+            "report_url": self._report_url(),
+            "count_today": int(wake.get("count_today") or 0),
+        }
+        res = self.bridge.notify(payload)
+        if res.get("ok"):
+            self.pending_proactive = {"event_id": ev_id, "at": t,
+                                      "why": payload["why"]}
+            self._log({"at": round(t, 3), "kind": "proactive_asked",
+                       "text": "跟宿主说想找他：" + payload["why"],
+                       "person": self.default_person})
+        else:
+            self.notify_fail_at = t
+            self._log({"at": round(t, 3), "kind": "proactive_failed",
+                       "text": "宿主没收：" + str(res.get("error") or "")[:60],
+                       "person": self.default_person})
+        self.save()
+        return res
+
+    def report_proactive(self, event_id: str, sent: bool, text: str = "",
+                         error: str = "", at=None) -> dict:
+        """宿主回执：说成了 / 没说成。
+
+        sent=True 才算「她说过这句话」：记上次主动时间、叫醒次数、记忆。
+        **没回音计数不在这里加** —— 那是海螺的 mood 插件按她真的说出去那句
+        记的（observe speaker=self, initiated=True）；有些宿主不走那条线，
+        就自己再调一次 /api/observe，文档里写着。
+
+        sent=False 什么都不记账，只留一笔失败：不然她会以为说过了在等你，
+        你没收到还以为她突然沉默了。
+        """
+        t = float(at) if at is not None else self.now()
+        pending = self.pending_proactive or {}
+        if pending.get("event_id") and event_id and pending["event_id"] != event_id:
+            return {"ok": False, "error": "事件对不上（这一条已经处理过了）"}
+
+        self.pending_proactive = None
+        if sent:
+            self.last_proactive_at = t
+            self.mark_woke(t)
+            if text:
+                self.memory.add(t, "event", "主动找你：" + text,
+                                person=self.default_person, weight=2)
+                self._log({"at": round(t, 3), "speaker": "self", "kind": "proactive",
+                           "text": text, "person": self.default_person})
+            self.save()
+            return {"ok": True, "sent": True, "count_today": self._wakes_today(t)}
+
+        self.notify_fail_at = t
+        self._log({"at": round(t, 3), "kind": "proactive_failed",
+                   "text": "想说话但没发出去：" + str(error or "不知道原因")[:60],
+                   "person": self.default_person})
+        self.save()
+        return {"ok": True, "sent": False}
 
     # ---------- 该不该叫醒她 ----------
     def _wakes_today(self, t: float) -> int:
@@ -668,8 +778,17 @@ class TideCore:
              "worried": f"担心 {worried:.0f}"}[k] for k in hit)
         return out
 
-    def mark_woke(self, at=None) -> dict:
+    def mark_woke(self, at=None, dedupe_s: float = 30.0) -> dict:
+        """记一次叫醒。
+
+        同一次开口会被两路记到：宿主的回执（report_proactive）和 mood 插件的
+        speech.gate（她真的说出去了）。以前两边各记一次 → 一天次数翻倍、
+        冷却按递减模式一路掉到 5 分钟，表现就是「刚说完又冒一句」。
+        这里用 dedupe_s 把 30 秒内的重复记成一笔。
+        """
         t = float(at) if at is not None else self.now()
+        if dedupe_s and self.wake_marks and (t - float(self.wake_marks[-1])) < dedupe_s:
+            return {"at": t, "count_today": self._wakes_today(t), "skipped": True}
         self.last_wake_at = t
         self.wake_marks.append(t)
         self.wake_marks = self.wake_marks[-50:]
@@ -904,6 +1023,8 @@ class TideCore:
             "dnd": self.dnd,
             "wake_marks": self.wake_marks[-50:],
             "last_wake_at": self.last_wake_at,
+            "pending_proactive": self.pending_proactive,
+            "notify_fail_at": self.notify_fail_at,
             "emotion": self.emotion.to_dict(),
             "needs": self.needs.save(),
             "bonds": {pid: b.save() for pid, b in self.bonds.items()},
@@ -935,6 +1056,9 @@ class TideCore:
         self.dnd = str(data.get("dnd", "off")) if data.get("dnd") in ("off", "manual", "auto") else "off"
         self.wake_marks = [float(x) for x in (data.get("wake_marks") or [])][-50:]
         self.last_wake_at = float(data.get("last_wake_at", 0.0))
+        pending = data.get("pending_proactive")
+        self.pending_proactive = pending if isinstance(pending, dict) else None
+        self.notify_fail_at = float(data.get("notify_fail_at", 0.0))
         self.log = data.get("log") or []
 
         emo_cfg = self.cfg.get("emotion") or {}
@@ -961,6 +1085,8 @@ class TideCore:
         self.dnd = "off"
         self.wake_marks = []
         self.last_wake_at = 0.0
+        self.pending_proactive = None
+        self.notify_fail_at = 0.0
         self.log = []
         self.emotion = emo_mod.Emotion(
             baseline=(self.cfg.get("emotion") or {}).get("baseline") or self.char.get("baseline"),

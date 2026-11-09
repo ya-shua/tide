@@ -1,5 +1,34 @@
 # CHANGELOG
 
+## v1.4.1（2026-11-09）
+
+- **修「刚说完一句，两分钟后又冒一句」**：一次开口会被记两遍 —— 宿主回执
+  `report_proactive` 记一次，mood 插件的 `speech.gate`（她真的说出去了）又记一次。
+  次数翻倍 → 递减冷却一路掉到 5 分钟下限。`mark_woke()` 现在 30 秒内的重复只记一笔
+- **修双开**：Windows 上 `SO_REUSEADDR` 让第二个实例也能绑上 7801/7880 同一个端口，
+  两个 Tide 各跑各的时钟、共用一份 `state.json` → 交错发消息、冷却形同失效。
+  面板现在 `allow_reuse_address = False` + `data/panel.lock` 单例锁，第二个实例直接退出
+- **契约补齐**：新增 `metadata.json`、`docs/对接.md`；`/api/health` 补 `id/version/uptime_s`，
+  新增 `GET /api/manifest`
+- 新增测试 `tests/test_single_instance.py`（7 条）
+
+## v1.4.0（2026-11-09）
+
+- **主动消息接上宿主：Tide 判断，宿主开口**。想念/无聊越过门槛的那一下
+  （`_maybe_notify_host`）通知宿主（海螺）「我想找他说句话」，宿主用自己的
+  人设和模型说一句，再把成没成回执回来
+  - 只在「从不该 → 该」那一刻通知一次，不是轮询；通知后等回执，期间不再敲
+  - `sent:true` 才记账：上次主动时间、今天叫醒次数、记忆里记一条
+  - **`sent:false` 什么都不记**，只留失败日志 + 退避 `retry_min` 分钟；
+    假装成功会让她以为说过了在等你，冷却和委屈全算错
+  - 没配宿主时退回自带的那张嘴（`wake.auto_send`），插件单独拿出去也能跑
+- 冷却、每天上限、免打扰、没回音停发**一个都没新增**，全用原有 `wake` 设置
+- 新增 `tide/bridge.py`、面板端点 `POST /api/proactive-report`
+- **`plugins/mood/` 改成进仓库**（.gitignore 只放行这一层）：这是宿主适配层，
+  别人拿走 Tide 没有它接不上
+- 新契约文档 `docs/主动消息-对接.md`（字段表 / 失败语义 / 自测 curl）
+- 新增 `tests/test_proactive_bridge.py`（8 个）
+
 ## v1.3.0（2026-11-09）
 
 - **好感 × 心情 → 说话的分寸**：提示词里多一行「说话的分寸」，按「对这个人多亲近」×

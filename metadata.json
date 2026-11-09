@@ -1,0 +1,38 @@
+{
+  "id": "tide",
+  "name": "汐",
+  "name_en": "Tide",
+  "version": "1.4.1",
+  "author": "ya-shua",
+  "description": "情绪与关系账本：她什么时候想你、什么时候该主动开口，由它判断；开口交给宿主。",
+  "builtin": false,
+  "kind": "app",
+  "port": 7880,
+  "launch": {
+    "runtime": "python",
+    "entry": "tide/panel.py",
+    "args": [
+      "-m",
+      "tide.panel"
+    ],
+    "note": "面板 + 情绪推进线程（--brain）；配了宿主就让宿主开口。",
+    "port": 7880,
+    "url": "http://127.0.0.1:7880/"
+  },
+  "capabilities": [
+    "情绪与需求随时间自然变化",
+    "按人和关系记好感、记仇、缓解",
+    "判断该不该主动开口（冷却、免打扰、每日上限）",
+    "生成说话分寸（海螺提示词里那一段）"
+  ],
+  "standalone": {
+    "works_alone": true,
+    "needs": [],
+    "how": "python -m tide.panel --brain；不配宿主时会退回自带的那张嘴（需要配置 QQ 或从面板复制消息）"
+  },
+  "contract": "docs/对接.md",
+  "source": {
+    "repo": "ya-shua/tide"
+  },
+  "page": "http://127.0.0.1:7880/"
+}

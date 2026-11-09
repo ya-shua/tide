@@ -6,3 +6,11 @@ qq:
 
 update:
   repo: "<owner>/tide"
+
+# 宿主桥（可选）：让她用自己的嘴说话 —— Tide 只判断，宿主负责说。
+# 接法见 docs/主动消息-对接.md；不配就退回自带的那张嘴（wake.auto_send）。
+# host:
+#   enabled: true
+#   url: "http://127.0.0.1:7801"      # 宿主面板地址
+#   token: "<宿主面板 token>"
+#   panel_port: 7880                   # 宿主回执打到这个端口

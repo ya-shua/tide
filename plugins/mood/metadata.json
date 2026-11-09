@@ -1,0 +1,25 @@
+{
+  "id": "mood",
+  "name": "情绪",
+  "version": "1.4.1",
+  "author": "dady",
+  "description": "把汐的心境系统接进发言链路：语气、长度、能不能开口都听它的。这是宿主内插件；汐本体（7880）另外用启动器起。",
+  "builtin": false,
+  "source": {
+    "repo": "ya-shua/tide"
+  },
+  "capabilities": [
+    "说话前注入心情（speech.prompt）",
+    "她开口时记一笔并告诉汐（speech.gate）",
+    "替汐请求宿主主动开口（/api/proactive/say）",
+    "收到消息时更新汐的状态（message.observed）"
+  ],
+  "standalone": {
+    "works_alone": false,
+    "needs": [
+      "必须有宿主调用 setup(ctx)",
+      "汐本体在 7880 上跑着"
+    ],
+    "how": "插件单独跑不了；先起汐本体（见 汐/metadata.json 的 launch），再让它在宿主里加载"
+  }
+}

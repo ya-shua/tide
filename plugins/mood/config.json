@@ -1,0 +1,6 @@
+﻿{
+  "enabled": true,
+  "panel_url": "http://127.0.0.1:7880",
+  "timeout_s": 1.5,
+  "deny_in_quiet": true
+}

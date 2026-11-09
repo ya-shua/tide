@@ -6,7 +6,9 @@ __pycache__/
 config/local.yaml
 .edge-*/
 _update/
-plugins/
+# 插件目录只放「宿主适配层」，要进仓库 —— 别人拿走 Tide 也得有这一份才接得上
+plugins/*
+!plugins/mood/
 logs/
 config/privacy.local.txt
 config/角色.yaml
